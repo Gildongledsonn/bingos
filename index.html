@@ -6,10 +6,935 @@
 <title>Painel de Bingo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/style.css" />
+<style>
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: radial-gradient(circle at 20% -10%, #1f4d3d 0%, #123328 45%, #0d241c 100%);
+  color: #f2ede0;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+#app { padding: 20px; min-height: 100vh; }
+button, input, select { font-family: inherit; }
+
+.topo { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
+.topo-titulo { display: flex; align-items: center; gap: 12px; }
+.bola-logo {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: #E7B84B; color: #2a2210; font-family: 'Fraunces', serif; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+  box-shadow: 0 0 0 3px rgba(231,184,75,0.25);
+}
+.topo-titulo h1 { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
+.topo-titulo p { margin: 2px 0 0; font-size: 13px; color: #b9c9bd; }
+
+.abas { display: flex; gap: 6px; background: rgba(0,0,0,0.22); padding: 4px; border-radius: 10px; flex-wrap: wrap; }
+.abas button { background: transparent; border: none; color: #cfe0d3; padding: 8px 14px; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; }
+.abas button.ativa { background: #E7B84B; color: #2a2210; font-weight: 600; }
+
+.faixa-ganhadores { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.chip-ganhador { background: linear-gradient(135deg,#E7B84B,#c9902e); color: #2a2210; padding: 7px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; box-shadow: 0 3px 10px rgba(0,0,0,0.25); }
+
+.conteudo { max-width: 1180px; margin: 0 auto; }
+.vazio, .vazio-inline { color: #b9c9bd; font-size: 14px; padding: 20px; text-align: center; }
+
+/* Tela de escolha de papel */
+.tela-escolha-papel { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; text-align: center; padding: 20px; }
+.escolha-cabecalho { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.bola-logo-grande { width: 60px; height: 60px; font-size: 26px; }
+.escolha-cabecalho h1 { font-family: 'Fraunces', serif; font-size: 26px; margin: 4px 0 0; }
+.escolha-cabecalho p { color: #b9c9bd; font-size: 14px; margin: 0; }
+.escolha-cartoes { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 620px; }
+.escolha-cartao {
+  background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 22px;
+  width: 240px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer;
+  color: #f2ede0; transition: transform 0.15s ease, background 0.15s ease;
+}
+.escolha-cartao:hover { transform: translateY(-4px); background: rgba(0,0,0,0.32); }
+.escolha-emoji { font-size: 30px; }
+.escolha-titulo { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 700; }
+.escolha-descricao { font-size: 12.5px; color: #b9c9bd; line-height: 1.4; }
+
+/* Painel do jogador */
+.topo-jogador { align-items: flex-start; }
+.status-jogador { display: flex; gap: 14px; background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px 16px; }
+.status-jogador div { display: flex; flex-direction: column; align-items: center; }
+.status-jogador strong { font-family: 'Fraunces', serif; font-size: 17px; }
+.status-jogador span { font-size: 10px; color: #b9c9bd; }
+.link-trocar-papel { display: block; margin: 26px auto 4px; background: transparent; border: none; color: #8fa295; font-size: 12px; cursor: pointer; text-decoration: underline; }
+.link-trocar-papel:hover { color: #cfe0d3; }
+
+/* Autenticação */
+.tela-auth { min-height: 70vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.form-auth {
+  background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 26px;
+  width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 12px;
+}
+.form-auth h2 { font-family: 'Fraunces', serif; font-size: 19px; margin: 0; }
+.form-auth p.subtitulo { font-size: 12.5px; color: #b9c9bd; margin: -6px 0 4px; line-height: 1.5; }
+.form-auth label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: #cfe0d3; }
+.form-auth .erro { margin: 0; }
+.badge-sessao { font-size: 12px; color: #b9c9bd; }
+.badge-sessao strong { color: #E7B84B; }
+.btn-sair { background: transparent; border: 1px solid #6b5a3a; color: #e0c98a; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+.btn-sair:hover { background: rgba(224,201,138,0.08); }
+.faixa-sessao { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin: -8px 0 12px; }
+
+/* Chamador */
+.tela-chamada { display: grid; grid-template-columns: 220px 1fr; gap: 24px; }
+@media (max-width: 760px) { .tela-chamada { grid-template-columns: 1fr; } }
+
+.painel-esquerda { display: flex; flex-direction: column; gap: 14px; }
+.bola-atual {
+  width: 100%; aspect-ratio: 1; border-radius: 50%; border: 6px solid #3a3530;
+  background: rgba(0,0,0,0.25); display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.bola-atual-numero { font-family: 'Fraunces', serif; font-size: 46px; font-weight: 700; }
+.bola-atual-label { font-size: 11px; color: #b9c9bd; text-transform: lowercase; margin-top: 2px; }
+
+.resumo { display: flex; justify-content: space-between; background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px 6px; }
+.resumo div { display: flex; flex-direction: column; align-items: center; flex: 1; }
+.resumo strong { font-family: 'Fraunces', serif; font-size: 18px; }
+.resumo span { font-size: 10px; color: #b9c9bd; }
+
+.instrucao { font-size: 12.5px; color: #b9c9bd; line-height: 1.5; margin: 0; }
+.btn-apagar-numero { background: transparent; border: 1px solid #7a4a44; color: #e6b3ac; padding: 9px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-apagar-numero:hover { background: rgba(230,179,172,0.1); }
+.btn-reiniciar { background: transparent; border: 1px solid #6b5a3a; color: #e0c98a; padding: 9px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn-reiniciar:hover { background: rgba(224,201,138,0.08); }
+
+.grade-bolas { display: grid; grid-template-columns: repeat(10, 1fr); gap: 7px; align-content: start; }
+@media (max-width: 560px) { .grade-bolas { grid-template-columns: repeat(6, 1fr); } }
+.bola {
+  aspect-ratio: 1; border-radius: 50%; border: 2px solid #3a5b4a; background: rgba(0,0,0,0.2);
+  color: #dfe8e0; font-size: 13px; font-weight: 600; cursor: pointer; transition: transform 0.12s ease;
+}
+.bola:hover { transform: scale(1.08); }
+.bola.marcada { color: #fff8e6; box-shadow: 0 2px 8px rgba(0,0,0,0.35); cursor: default; }
+.bola.marcada:hover { transform: none; }
+
+/* Cartelas — filtros */
+.barra-filtros { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.filtro-botoes { display: flex; gap: 6px; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 9px; }
+.filtro-botoes button { background: transparent; border: none; color: #cfe0d3; padding: 7px 12px; border-radius: 7px; font-size: 12.5px; cursor: pointer; }
+.filtro-botoes button.ativo { background: #E7B84B; color: #2a2210; font-weight: 600; }
+.busca-numero { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); color: #f2ede0; border-radius: 8px; padding: 8px 10px; font-size: 13px; width: 190px; }
+.busca-numero::placeholder { color: #8fa295; }
+
+/* Cartelas */
+.grade-cartelas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.cartela { background: #F4EFE2; color: #2a2210; border-radius: 12px; padding: 14px; position: relative; box-shadow: 0 6px 18px rgba(0,0,0,0.28); text-align: left; border: none; font-family: inherit; }
+.cartela-disponivel { cursor: pointer; background: #E9E4D4; transition: transform 0.12s ease, box-shadow 0.12s ease; display: flex; flex-direction: column; width: 100%; }
+.cartela-disponivel:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0,0,0,0.35); }
+.cartela-completa { outline: 3px solid #E7B84B; }
+.cartela-cabecalho { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.cartela-numero { font-family: 'Fraunces', serif; font-weight: 700; font-size: 15px; }
+.cartela-dono { font-size: 12.5px; color: #5c5340; max-width: 60%; text-align: right; }
+.tag-disponivel { font-size: 11px; color: #3f7a52; font-weight: 600; }
+.cartela-linhas { display: flex; flex-direction: column; gap: 6px; }
+.cartela-linha { display: flex; gap: 6px; }
+.pedra { flex: 1; text-align: center; padding: 6px 0; border-radius: 6px; border: 1.5px solid #d8cfb8; font-size: 13px; font-weight: 600; background: #fffdf8; }
+.pedra-livre { color: #7a715c; background: #f3efe1; }
+.pedra-marcada { color: #fff8e6; }
+.cartela-rodape { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11px; color: #5c5340; }
+.barra-progresso { flex: 1; height: 6px; border-radius: 4px; background: #e3dac0; overflow: hidden; }
+.barra-preenchida { height: 100%; background: #E7B84B; }
+.selo-bingo { position: absolute; top: -10px; right: 10px; background: #B23A2E; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 12px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+.cta-escolher { margin-top: 10px; text-align: center; background: #2F7A63; color: #f2ede0; padding: 7px; border-radius: 7px; font-size: 12.5px; font-weight: 600; }
+
+/* Modais */
+.modal-fundo { position: fixed; inset: 0; background: rgba(10,15,12,0.65); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.modal-caixa { background: #F4EFE2; color: #2a2210; border-radius: 14px; padding: 20px; width: 100%; max-width: 360px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+.modal-caixa h3 { font-family: 'Fraunces', serif; margin: 0 0 12px; font-size: 17px; }
+.modal-numeros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.modal-pedra { border: 1.5px solid #d8cfb8; border-radius: 6px; padding: 4px 7px; font-size: 12.5px; font-weight: 600; }
+.modal-pedra-clicavel { cursor: pointer; color: #fff8e6; font-family: inherit; }
+.modal-pedra-clicavel:hover { filter: brightness(1.1); transform: scale(1.05); }
+.modal-label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: #5c5340; margin-bottom: 6px; }
+.modal-mensagem { font-size: 13.5px; color: #4a4433; line-height: 1.5; margin: 0; }
+.modal-botoes { display: flex; gap: 8px; margin-top: 10px; }
+.btn-cancelar { flex: 1; background: transparent; border: 1px solid #b8ac8a; color: #5c5340; padding: 9px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.modal-botoes .btn-cadastrar { flex: 1.4; margin-top: 0; }
+
+/* Administração & Gestão de Chamadores */
+.tela-admin { display: flex; flex-direction: column; gap: 18px; }
+.admin-bloco { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.admin-bloco h2 { font-family: 'Fraunces', serif; font-size: 17px; margin: 0; }
+.admin-bloco p { font-size: 13px; color: #cfe0d3; margin: 0; }
+.form-novo-chamador { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+@media (max-width: 600px) { .form-novo-chamador { grid-template-columns: 1fr; } }
+.form-novo-chamador label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #cfe0d3; }
+.lista-chamadores { display: flex; flex-direction: column; gap: 6px; }
+.item-chamador { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.15); padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+
+.btn-perigo { background: transparent; border: 1px solid #7a4a44; color: #e6b3ac; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 12.5px; }
+.btn-perigo:hover { background: rgba(230,179,172,0.1); }
+.btn-perigo-cheio { flex: 1.4; background: #B23A2E; color: #fff8e6; border: none; }
+.btn-perigo-cheio:hover { filter: brightness(1.08); }
+.busca-admin { width: 100%; }
+.carregar-mais-wrap { display: flex; justify-content: center; margin-top: 18px; }
+.btn-carregar-mais { background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.15); color: #f2ede0; padding: 10px 18px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.btn-carregar-mais:hover { background: rgba(0,0,0,0.32); }
+
+.lista-cartelas { background: rgba(0,0,0,0.14); border-radius: 12px; padding: 14px 18px; max-height: 400px; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: #b9c9bd; font-weight: 500; font-size: 11.5px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.12); position: sticky; top: 0; background: #123328; }
+td { padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.07); vertical-align: middle; }
+.td-numeros { color: #cfe0d3; font-size: 11.5px; }
+.input-edicao { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #f2ede0; border-radius: 6px; padding: 5px 7px; font-size: 12.5px; }
+.input-edicao::placeholder { color: #7d9184; }
+.btn-remover { background: transparent; border: 1px solid #7a4a44; color: #e6b3ac; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 11.5px; white-space: nowrap; }
+.btn-remover:hover { background: rgba(230,179,172,0.1); }
+
+.erro { color: #ffb4a8; font-size: 12.5px; margin: 4px 0 0; }
+input, select { background: #eee7d4; border: none; border-radius: 6px; padding: 8px 9px; font-size: 14px; color: #2a2210; }
+input:focus, select:focus { outline: 2px solid #E7B84B; }
+.btn-cadastrar { background: #E7B84B; color: #2a2210; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 4px; }
+.btn-cadastrar:hover { filter: brightness(1.06); }
+.btn-cadastrar:disabled, .btn-cancelar:disabled { opacity: 0.6; cursor: default; }
+</style>
 </head>
 <body>
 <div id="app"></div>
-<script src="js/app.js" defer></script>
+
+<script>
+// ===================== Painel de Bingo — Lógica com Master Admin e Chamadores Autorizados =====================
+const TOTAL_BOLAS = 90;
+const NUMEROS_POR_CARTELA = 15;
+const TOTAL_CARTELAS = 1000;
+const PAGINA = 60;
+const COLUNA_COR = [
+  "#8E4A3A", "#B5772F", "#A98A2A", "#5B7A3A", "#2F7A63",
+  "#2F6E7A", "#3A5B8E", "#5B4A8E", "#7A3A6E",
+];
+function corDoNumero(n) {
+  const idx = Math.min(8, Math.floor((n - 1) / 10));
+  return COLUNA_COR[idx];
+}
+
+const K = {
+  cards: "bingo-cartelas",
+  drawn: "bingo-sorteados",
+  winners: "bingo-ganhadores",
+  callers: "bingo-chamadores-autorizados",
+};
+
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error("Erro ao salvar:", e);
+  }
+}
+
+function escapeHtml(str) {
+  return String(str == null ? "" : str).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+async function hashTexto(txt) {
+  if (window.crypto && window.crypto.subtle) {
+    try {
+      const enc = new TextEncoder().encode(txt);
+      const buf = await window.crypto.subtle.digest("SHA-256", enc);
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch (e) {}
+  }
+  let hash = 0;
+  for (let i = 0; i < txt.length; i++) hash = (hash * 31 + txt.charCodeAt(i)) >>> 0;
+  return "fallback-" + hash.toString(16);
+}
+
+function sortear15(usados) {
+  let numeros, chave;
+  do {
+    const baralho = Array.from({ length: TOTAL_BOLAS }, (_, i) => i + 1);
+    for (let i = baralho.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [baralho[i], baralho[j]] = [baralho[j], baralho[i]];
+    }
+    numeros = baralho.slice(0, NUMEROS_POR_CARTELA).sort((a, b) => a - b);
+    chave = numeros.join(",");
+  } while (usados.has(chave));
+  usados.add(chave);
+  return numeros;
+}
+function gerarPool(qtd = TOTAL_CARTELAS) {
+  const usados = new Set();
+  const lista = [];
+  for (let i = 1; i <= qtd; i++) lista.push({ numero: i, dono: null, numeros: sortear15(usados) });
+  return lista;
+}
+
+const state = {
+  papel: null,
+  tipoOperador: null,
+  usuarioLogado: "",
+  aba: "chamada",
+  cartelas: [],
+  sorteados: [],
+  ganhadores: [],
+  ganhadoresIds: new Set(),
+  modalNumero: null,
+  nomeClaim: "",
+  erroClaim: "",
+  apagarAberto: false,
+  confirmacao: null,
+  filtroCartelas: "todas",
+  buscaCartelas: "",
+  visiveisCartelas: PAGINA,
+  buscaAdmin: "",
+  visiveisAdmin: PAGINA,
+  usuarioAuth: "",
+  erroAuth: "",
+  novoChamadorUser: "",
+  novoChamadorPass: "",
+  erroChamador: "",
+};
+
+async function initMasterAdmin() {
+  const masterUser = "Gildongledson";
+  const masterPass = "159753@bingos";
+  const passHash = await hashTexto(masterPass);
+  
+  let chamadores = loadJSON(K.callers, null);
+  if (!chamadores) {
+    chamadores = [{ usuario: masterUser, hash: passHash, master: true }];
+    saveJSON(K.callers, chamadores);
+  } else {
+    const idx = chamadores.findIndex(c => c.usuario.toLowerCase() === masterUser.toLowerCase());
+    if (idx < 0) {
+      chamadores.unshift({ usuario: masterUser, hash: passHash, master: true });
+      saveJSON(K.callers, chamadores);
+    } else {
+      chamadores[idx].hash = passHash;
+      chamadores[idx].master = true;
+      saveJSON(K.callers, chamadores);
+    }
+  }
+}
+
+async function init() {
+  await initMasterAdmin();
+  state.cartelas = loadJSON(K.cards, []);
+  if (!state.cartelas || state.cartelas.length === 0) {
+    state.cartelas = gerarPool();
+    saveJSON(K.cards, state.cartelas);
+  }
+  state.sorteados = loadJSON(K.drawn, []);
+  state.ganhadores = loadJSON(K.winners, []);
+  state.ganhadoresIds = new Set(state.ganhadores.map((g) => g.numero));
+  render();
+}
+
+window.addEventListener("storage", (e) => {
+  if (![K.cards, K.drawn, K.winners, K.callers].includes(e.key)) return;
+  state.cartelas = loadJSON(K.cards, state.cartelas);
+  state.sorteados = loadJSON(K.drawn, state.sorteados);
+  state.ganhadores = loadJSON(K.winners, state.ganhadores);
+  state.ganhadoresIds = new Set(state.ganhadores.map((g) => g.numero));
+  render();
+});
+
+function checarGanhadores() {
+  const setSorteados = new Set(state.sorteados);
+  const novos = [];
+  state.cartelas.forEach((c) => {
+    if (!c.dono || state.ganhadoresIds.has(c.numero)) return;
+    if (c.numeros.every((n) => setSorteados.has(n))) {
+      state.ganhadoresIds.add(c.numero);
+      novos.push({ numero: c.numero, dono: c.dono, hora: new Date().toLocaleTimeString("pt-BR") });
+    }
+  });
+  if (novos.length) {
+    state.ganhadores = [...state.ganhadores, ...novos];
+    saveJSON(K.winners, state.ganhadores);
+  }
+}
+
+function escolherPapel(papel) {
+  state.papel = papel;
+  state.erroAuth = "";
+  render();
+}
+function voltarEscolhaPapel() {
+  state.papel = null;
+  state.tipoOperador = null;
+  state.usuarioLogado = "";
+  render();
+}
+
+async function fazerLoginOperador() {
+  const usuario = (document.getElementById("auth-usuario").value || "").trim();
+  const senha = document.getElementById("auth-senha").value || "";
+  if (!usuario || !senha) {
+    state.erroAuth = "Preencha usuário e senha.";
+    state.usuarioAuth = usuario;
+    render();
+    return;
+  }
+  const hash = await hashTexto(senha);
+  const chamadores = loadJSON(K.callers, []);
+  const encontrado = chamadores.find(c => c.usuario.toLowerCase() === usuario.toLowerCase() && c.hash === hash);
+
+  if (encontrado) {
+    state.usuarioLogado = encontrado.usuario;
+    state.tipoOperador = (encontrado.usuario.toLowerCase() === "gildongledson" || encontrado.master) ? "master" : "chamador";
+    state.aba = "chamada";
+    state.erroAuth = "";
+    render();
+  } else {
+    state.usuarioAuth = usuario;
+    state.erroAuth = "Usuário ou senha incorretos ou sem permissão.";
+    render();
+  }
+}
+
+function sairOperador() {
+  state.tipoOperador = null;
+  state.usuarioLogado = "";
+  state.papel = null;
+  render();
+}
+
+async function adicionarChamador() {
+  const u = (document.getElementById("novo-chamador-user").value || "").trim();
+  const s = document.getElementById("novo-chamador-pass").value || "";
+  if (!u || !s) {
+    state.erroChamador = "Preencha o usuário e a senha do novo chamador.";
+    render();
+    return;
+  }
+  if (s.length < 4) {
+    state.erroChamador = "A senha deve ter pelo menos 4 caracteres.";
+    render();
+    return;
+  }
+  const hash = await hashTexto(s);
+  const chamadores = loadJSON(K.callers, []);
+  if (chamadores.some(c => c.usuario.toLowerCase() === u.toLowerCase())) {
+    state.erroChamador = "Este usuário já existe.";
+    render();
+    return;
+  }
+  chamadores.push({ usuario: u, hash, master: false });
+  saveJSON(K.callers, chamadores);
+  state.novoChamadorUser = "";
+  state.novoChamadorPass = "";
+  state.erroChamador = "";
+  render();
+}
+
+function removerChamador(usuario) {
+  if (usuario.toLowerCase() === "gildongledson") return;
+  let chamadores = loadJSON(K.callers, []);
+  chamadores = chamadores.filter(c => c.usuario.toLowerCase() !== usuario.toLowerCase());
+  saveJSON(K.callers, chamadores);
+  render();
+}
+
+function marcarBola(n) {
+  if (state.sorteados.includes(n)) return;
+  state.sorteados = [...state.sorteados, n];
+  saveJSON(K.drawn, state.sorteados);
+  checarGanhadores();
+  render();
+}
+
+function abrirApagar() { state.apagarAberto = true; render(); }
+function fecharApagar() { state.apagarAberto = false; render(); }
+
+function removerNumero(n) {
+  state.sorteados = state.sorteados.filter((x) => x !== n);
+  saveJSON(K.drawn, state.sorteados);
+  const setSorteados = new Set(state.sorteados);
+  const porNumero = {};
+  state.cartelas.forEach((c) => (porNumero[c.numero] = c));
+  const validos = state.ganhadores.filter((g) => {
+    const c = porNumero[g.numero];
+    return !c || c.numeros.every((num) => setSorteados.has(num));
+  });
+  if (validos.length !== state.ganhadores.length) {
+    state.ganhadores = validos;
+    state.ganhadoresIds = new Set(validos.map((g) => g.numero));
+    saveJSON(K.winners, validos);
+  }
+  render();
+}
+
+function pedirReiniciar() {
+  state.confirmacao = {
+    mensagem: "Reiniciar a partida? As bolas sorteadas e os ganhadores serão apagados. As cartelas e quem escolheu cada uma permanecem.",
+    acao: "reiniciar",
+    perigo: false,
+  };
+  render();
+}
+function pedirGerarPool() {
+  state.confirmacao = {
+    mensagem: `Isso apaga TODAS as ${TOTAL_CARTELAS} cartelas, quem escolheu cada uma, as bolas sorteadas e os ganhadores, gerando um novo baralho do zero. Deseja continuar?`,
+    acao: "gerarPool",
+    perigo: true,
+  };
+  render();
+}
+function cancelarConfirmacao() { state.confirmacao = null; render(); }
+function confirmarAcaoPendente() {
+  if (!state.confirmacao) return;
+  if (state.confirmacao.acao === "reiniciar") {
+    state.sorteados = [];
+    state.ganhadores = [];
+    state.ganhadoresIds = new Set();
+    saveJSON(K.drawn, []);
+    saveJSON(K.winners, []);
+  } else if (state.confirmacao.acao === "gerarPool") {
+    state.cartelas = gerarPool();
+    state.sorteados = [];
+    state.ganhadores = [];
+    state.ganhadoresIds = new Set();
+    saveJSON(K.cards, state.cartelas);
+    saveJSON(K.drawn, []);
+    saveJSON(K.winners, []);
+  }
+  state.confirmacao = null;
+  render();
+}
+
+function abrirEscolha(numero) {
+  state.modalNumero = numero;
+  state.nomeClaim = "";
+  state.erroClaim = "";
+  render();
+}
+function fecharEscolha() { state.modalNumero = null; render(); }
+
+function confirmarEscolha() {
+  const input = document.getElementById("input-nome-claim");
+  const nome = input ? input.value.trim() : "";
+  state.nomeClaim = nome;
+  if (!nome) { state.erroClaim = "Informe o nome de quem está escolhendo a cartela."; render(); return; }
+  const atuais = loadJSON(K.cards, state.cartelas);
+  const idx = atuais.findIndex((c) => c.numero === state.modalNumero);
+  if (idx < 0) { state.erroClaim = "Essa cartela não existe mais."; render(); return; }
+  if (atuais[idx].dono) {
+    state.cartelas = atuais;
+    state.erroClaim = `Essa cartela já foi escolhida por ${atuais[idx].dono}. Escolha outra, por favor.`;
+    render();
+    return;
+  }
+  atuais[idx] = { ...atuais[idx], dono: nome };
+  state.cartelas = atuais;
+  saveJSON(K.cards, atuais);
+  checarGanhadores();
+  state.modalNumero = null;
+  render();
+}
+
+function setFiltroCartelas(f) { state.filtroCartelas = f; state.visiveisCartelas = PAGINA; render(); }
+function filtrarCartelasBusca(valor) {
+  state.buscaCartelas = valor.replace(/[^0-9]/g, "");
+  state.visiveisCartelas = PAGINA;
+  const el = document.getElementById("resultado-cartelas");
+  if (el) el.innerHTML = htmlResultadoCartelas();
+}
+function carregarMaisCartelas() {
+  state.visiveisCartelas += PAGINA;
+  const el = document.getElementById("resultado-cartelas");
+  if (el) el.innerHTML = htmlResultadoCartelas();
+}
+
+function liberarCartela(numero) {
+  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: null } : c));
+  saveJSON(K.cards, state.cartelas);
+  state.ganhadoresIds.delete(numero);
+  render();
+}
+function salvarDono(numero, novoNome) {
+  const nome = (novoNome || "").trim();
+  const atual = state.cartelas.find((c) => c.numero === numero);
+  if (atual && (atual.dono || "") === nome) return;
+  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: nome || null } : c));
+  saveJSON(K.cards, state.cartelas);
+  checarGanhadores();
+  render();
+}
+function buscarAdmin(valor) {
+  state.buscaAdmin = valor;
+  state.visiveisAdmin = PAGINA;
+  const el = document.getElementById("resultado-admin");
+  if (el) el.innerHTML = htmlResultadoAdmin();
+}
+function carregarMaisAdmin() {
+  state.visiveisAdmin += PAGINA;
+  const el = document.getElementById("resultado-admin");
+  if (el) el.innerHTML = htmlResultadoAdmin();
+}
+function setAba(aba) { state.aba = aba; render(); }
+
+function render() {
+  const app = document.getElementById("app");
+  if (state.papel === null) {
+    app.innerHTML = htmlEscolhaPapel();
+  } else if (state.papel === "jogador") {
+    app.innerHTML = htmlJogador();
+  } else if (state.papel === "operador") {
+    app.innerHTML = state.tipoOperador ? htmlOperador() : htmlAuth();
+  }
+  app.innerHTML += htmlModais();
+}
+
+function htmlEscolhaPapel() {
+  return `
+    <div class="tela-escolha-papel">
+      <div class="escolha-cabecalho">
+        <span class="bola-logo bola-logo-grande">B</span>
+        <h1>Painel de Bingo</h1>
+        <p>Como você vai usar o app agora?</p>
+      </div>
+      <div class="escolha-cartoes">
+        <button class="escolha-cartao" onclick="escolherPapel('jogador')">
+          <span class="escolha-emoji">🎟️</span>
+          <span class="escolha-titulo">Sou jogador</span>
+          <span class="escolha-descricao">Escolher minha cartela e acompanhar a partida</span>
+        </button>
+        <button class="escolha-cartao" onclick="escolherPapel('operador')">
+          <span class="escolha-emoji">🎙️</span>
+          <span class="escolha-titulo">Sou operador / Admin</span>
+          <span class="escolha-descricao">Acessar com login e senha autorizados</span>
+        </button>
+      </div>
+    </div>`;
+}
+
+function htmlAuth() {
+  const usuarioValor = escapeHtml(state.usuarioAuth);
+  return `
+    <div class="tela-auth">
+      <div class="form-auth">
+        <h2>Entrar no Painel</h2>
+        <p class="subtitulo">Insira suas credenciais de operador ou administrador autorizadas.</p>
+        <label>Usuário
+          <input id="auth-usuario" value="${usuarioValor}" placeholder="Seu usuário" />
+        </label>
+        <label>Senha
+          <input id="auth-senha" type="password" placeholder="Sua senha" onkeydown="if(event.key==='Enter') fazerLoginOperador()" />
+        </label>
+        ${state.erroAuth ? `<p class="erro">${escapeHtml(state.erroAuth)}</p>` : ""}
+        <button class="btn-cadastrar" onclick="fazerLoginOperador()">Entrar</button>
+        <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Voltar</button>
+      </div>
+    </div>`;
+}
+
+function htmlFaixaGanhadores() {
+  if (!state.ganhadores.length) return "";
+  return `<div class="faixa-ganhadores">${state.ganhadores.map((g) => `<span class="chip-ganhador">🏆 Cartela nº ${g.numero} — ${escapeHtml(g.dono)}</span>`).join("")}</div>`;
+}
+
+function htmlJogador() {
+  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
+  const ultimaBola = state.sorteados[state.sorteados.length - 1];
+  return `
+    <div>
+      <header class="topo topo-jogador">
+        <div class="topo-titulo">
+          <span class="bola-logo">B</span>
+          <div>
+            <h1>Escolha sua cartela</h1>
+            <p>Toque em uma cartela disponível para reservar a sua</p>
+          </div>
+        </div>
+        <div class="status-jogador">
+          <div><strong>${ultimaBola ?? "—"}</strong><span>última bola</span></div>
+          <div><strong>${state.sorteados.length}</strong><span>sorteadas</span></div>
+          <div><strong>${disponiveis}</strong><span>disponíveis</span></div>
+        </div>
+      </header>
+      ${htmlFaixaGanhadores()}
+      <main class="conteudo">${htmlTelaCartelas()}</main>
+      <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Voltar ao início</button>
+    </div>`;
+}
+
+function htmlOperador() {
+  const isMaster = state.tipoOperador === "master";
+  return `
+    <header class="topo">
+      <div class="topo-titulo">
+        <span class="bola-logo">B</span>
+        <div>
+          <h1>Painel de Bingo</h1>
+          <p>${isMaster ? "Administrador Master" : "Chamador Autorizado"}</p>
+        </div>
+      </div>
+      <nav class="abas">
+        <button class="${state.aba === "chamada" ? "ativa" : ""}" onclick="setAba('chamada')">Chamador</button>
+        <button class="${state.aba === "cartelas" ? "ativa" : ""}" onclick="setAba('cartelas')">Cartelas</button>
+        ${isMaster ? `<button class="${state.aba === "admin" ? "ativa" : ""}" onclick="setAba('admin')">Administração</button>` : ""}
+      </nav>
+    </header>
+    <div class="faixa-sessao">
+      <span class="badge-sessao">Logado como: <strong>${escapeHtml(state.usuarioLogado)}</strong></span>
+      <button class="btn-sair" onclick="sairOperador()">Sair</button>
+    </div>
+    ${htmlFaixaGanhadores()}
+    <main class="conteudo">
+      ${state.aba === "chamada" ? htmlTelaChamada() : ""}
+      ${state.aba === "cartelas" ? htmlTelaCartelas() : ""}
+      ${state.aba === "admin" && isMaster ? htmlTelaAdmin() : ""}
+    </main>
+    <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Trocar de painel</button>`;
+}
+
+function htmlTelaChamada() {
+  const set = new Set(state.sorteados);
+  const ultimaBola = state.sorteados[state.sorteados.length - 1];
+  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
+  const bolas = Array.from({ length: TOTAL_BOLAS }, (_, i) => i + 1)
+    .map((n) => {
+      const marcada = set.has(n);
+      const estilo = marcada ? ` style="background:${corDoNumero(n)};border-color:${corDoNumero(n)}"` : "";
+      return `<button class="bola${marcada ? " marcada" : ""}"${estilo} onclick="marcarBola(${n})">${n}</button>`;
+    })
+    .join("");
+  return `
+    <div class="tela-chamada">
+      <div class="painel-esquerda">
+        <div class="bola-atual" style="border-color:${ultimaBola ? corDoNumero(ultimaBola) : "#3a3530"}">
+          <span class="bola-atual-numero">${ultimaBola ?? "—"}</span>
+          <span class="bola-atual-label">última bola</span>
+        </div>
+        <div class="resumo">
+          <div><strong>${state.sorteados.length}</strong><span>sorteadas</span></div>
+          <div><strong>${TOTAL_BOLAS - state.sorteados.length}</strong><span>restantes</span></div>
+          <div><strong>${state.cartelas.length - disponiveis}</strong><span>escolhidas</span></div>
+        </div>
+        <p class="instrucao">Toque no número anunciado no globo para marcá-lo. Uma vez marcado, você pode apagar usando o botão abaixo se houver engano.</p>
+        <button class="btn-apagar-numero" onclick="abrirApagar()">Apagar número</button>
+        <button class="btn-reiniciar" onclick="pedirReiniciar()">Reiniciar partida</button>
+      </div>
+      <div class="grade-bolas">${bolas}</div>
+    </div>`;
+}
+
+function htmlCartaoCartela(c, set) {
+  if (!c.dono) {
+    const linhas = [0, 1, 2]
+      .map((linha) => `<div class="cartela-linha">${c.numeros.slice(linha * 5, linha * 5 + 5).map((n) => `<span class="pedra pedra-livre">${n}</span>`).join("")}</div>`)
+      .join("");
+    return `
+      <button class="cartela cartela-disponivel" onclick="abrirEscolha(${c.numero})">
+        <div class="cartela-cabecalho">
+          <span class="cartela-numero">Nº ${c.numero}</span>
+          <span class="tag-disponivel">Disponível</span>
+        </div>
+        <div class="cartela-linhas">${linhas}</div>
+        <span class="cta-escolher">Escolher esta cartela</span>
+      </button>`;
+  }
+  const marcados = c.numeros.filter((n) => set.has(n)).length;
+  const completa = marcados === c.numeros.length;
+  const linhas = [0, 1, 2]
+    .map((linha) => `<div class="cartela-linha">${c.numeros
+      .slice(linha * 5, linha * 5 + 5)
+      .map((n) => {
+        const marcada = set.has(n);
+        const estilo = marcada ? ` style="background:${corDoNumero(n)};border-color:${corDoNumero(n)}"` : "";
+        return `<span class="pedra${marcada ? " pedra-marcada" : ""}"${estilo}>${n}</span>`;
+      })
+      .join("")}</div>`)
+    .join("");
+  return `
+    <div class="cartela${completa ? " cartela-completa" : ""}">
+      <div class="cartela-cabecalho">
+        <span class="cartela-numero">Nº ${c.numero}</span>
+        <span class="cartela-dono">${escapeHtml(c.dono)}</span>
+      </div>
+      <div class="cartela-linhas">${linhas}</div>
+      <div class="cartela-rodape">
+        <div class="barra-progresso"><div class="barra-preenchida" style="width:${(marcados / c.numeros.length) * 100}%"></div></div>
+        <span>${marcados}/${c.numeros.length}</span>
+      </div>
+      ${completa ? '<div class="selo-bingo">BINGO!</div>' : ""}
+    </div>`;
+}
+
+function cartelasFiltradas() {
+  return state.cartelas
+    .filter((c) => (state.filtroCartelas === "disponiveis" ? !c.dono : state.filtroCartelas === "reservadas" ? !!c.dono : true))
+    .filter((c) => (state.buscaCartelas ? String(c.numero).includes(state.buscaCartelas.trim()) : true));
+}
+
+function htmlResultadoCartelas() {
+  const set = new Set(state.sorteados);
+  const filtradas = cartelasFiltradas();
+  if (!filtradas.length) return `<div class="vazio">Nenhuma cartela encontrada.</div>`;
+  const paraExibir = filtradas.slice(0, state.visiveisCartelas);
+  const grid = `<div class="grade-cartelas">${paraExibir.map((c) => htmlCartaoCartela(c, set)).join("")}</div>`;
+  const carregarMais = state.visiveisCartelas < filtradas.length
+    ? `<div class="carregar-mais-wrap"><button class="btn-carregar-mais" onclick="carregarMaisCartelas()">Carregar mais (${filtradas.length - state.visiveisCartelas} restantes)</button></div>`
+    : "";
+  return grid + carregarMais;
+}
+
+function htmlTelaCartelas() {
+  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
+  return `
+    <div>
+      <div class="barra-filtros">
+        <div class="filtro-botoes">
+          <button class="${state.filtroCartelas === "todas" ? "ativo" : ""}" onclick="setFiltroCartelas('todas')">Todas (${state.cartelas.length})</button>
+          <button class="${state.filtroCartelas === "disponiveis" ? "ativo" : ""}" onclick="setFiltroCartelas('disponiveis')">Disponíveis (${disponiveis})</button>
+          <button class="${state.filtroCartelas === "reservadas" ? "ativo" : ""}" onclick="setFiltroCartelas('reservadas')">Escolhidas (${state.cartelas.length - disponiveis})</button>
+        </div>
+        <input class="busca-numero" value="${escapeHtml(state.buscaCartelas)}" oninput="filtrarCartelasBusca(this.value)" placeholder="Buscar nº da cartela" inputmode="numeric" />
+      </div>
+      <div id="resultado-cartelas">${htmlResultadoCartelas()}</div>
+    </div>`;
+}
+
+function adminFiltradas() {
+  const termo = state.buscaAdmin.trim().toLowerCase();
+  return state.cartelas
+    .filter((c) => (termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) : true))
+    .sort((a, b) => a.numero - b.numero);
+}
+
+function htmlResultadoAdmin() {
+  const filtradas = adminFiltradas();
+  const paraExibir = filtradas.slice(0, state.visiveisAdmin);
+  const linhas = paraExibir
+    .map(
+      (c) => `
+      <tr>
+        <td>${c.numero}</td>
+        <td><input class="input-edicao" placeholder="— disponível —" value="${escapeHtml(c.dono)}" onblur="salvarDono(${c.numero}, this.value)" /></td>
+        <td class="td-numeros">${c.numeros.join(", ")}</td>
+        <td>${c.dono ? `<button class="btn-remover" onclick="liberarCartela(${c.numero})">Liberar</button>` : ""}</td>
+      </tr>`
+    )
+    .join("");
+  const carregarMais = state.visiveisAdmin < filtradas.length
+    ? `<div class="carregar-mais-wrap"><button class="btn-carregar-mais" onclick="carregarMaisAdmin()">Carregar mais (${filtradas.length - state.visiveisAdmin} restantes)</button></div>`
+    : "";
+  return `
+    <table>
+      <thead><tr><th>Nº</th><th>Dono</th><th>Números</th><th></th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    ${carregarMais}`;
+}
+
+function htmlTelaAdmin() {
+  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
+  const chamadores = loadJSON(K.callers, []);
+  const listaChamadoresHtml = chamadores.map(c => `
+    <div class="item-chamador">
+      <span><strong>${escapeHtml(c.usuario)}</strong> ${c.usuario.toLowerCase() === 'gildongledson' ? '(Master Admin)' : ''}</span>
+      ${c.usuario.toLowerCase() !== 'gildongledson' ? `<button class="btn-remover" onclick="removerChamador('${c.usuario}')">Remover</button>` : ''}
+    </div>
+  `).join("");
+
+  return `
+    <div class="tela-admin">
+      <div class="admin-bloco">
+        <h2>Gerenciar Chamadores Autorizados</h2>
+        <p>Como Administrador Master, você pode cadastrar usuários e senhas para permitir que outras pessoas atuem como chamadores.</p>
+        <div class="form-novo-chamador">
+          <label>Usuário
+            <input id="novo-chamador-user" value="${escapeHtml(state.novoChamadorUser)}" placeholder="Nome do chamador" />
+          </label>
+          <label>Senha
+            <input id="novo-chamador-pass" type="password" value="${escapeHtml(state.novoChamadorPass)}" placeholder="Mínimo 4 caracteres" />
+          </label>
+          <button class="btn-cadastrar" onclick="adicionarChamador()">Adicionar</button>
+        </div>
+        ${state.erroChamador ? `<p class="erro">${escapeHtml(state.erroChamador)}</p>` : ""}
+        <div class="lista-chamadores">${listaChamadoresHtml}</div>
+      </div>
+
+      <div class="admin-bloco">
+        <h2>Baralho de cartelas</h2>
+        <p>${state.cartelas.length} cartelas geradas · ${disponiveis} disponíveis · ${state.cartelas.length - disponiveis} escolhidas.</p>
+        <button class="btn-perigo" onclick="pedirGerarPool()">Apagar tudo e gerar novo baralho de ${TOTAL_CARTELAS}</button>
+      </div>
+
+      <div class="admin-bloco">
+        <h2>Gerenciamento de Cartelas e Donos</h2>
+        <input class="busca-numero busca-admin" value="${escapeHtml(state.buscaAdmin)}" oninput="buscarAdmin(this.value)" placeholder="Buscar por número ou nome" />
+        <div class="lista-cartelas" id="resultado-admin">${htmlResultadoAdmin()}</div>
+      </div>
+    </div>`;
+}
+
+function htmlModais() {
+  let html = "";
+
+  if (state.modalNumero !== null) {
+    const c = state.cartelas.find((x) => x.numero === state.modalNumero);
+    if (c) {
+      html += `
+        <div class="modal-fundo" onclick="fecharEscolha()">
+          <div class="modal-caixa" onclick="event.stopPropagation()">
+            <h3>Escolher cartela nº ${c.numero}</h3>
+            <div class="modal-numeros">${c.numeros.map((n) => `<span class="modal-pedra" style="border-color:${corDoNumero(n)}">${n}</span>`).join("")}</div>
+            <label class="modal-label">Nome de quem está adquirindo
+              <input id="input-nome-claim" value="${escapeHtml(state.nomeClaim)}" placeholder="Seu nome" onkeydown="if(event.key==='Enter') confirmarEscolha()" />
+            </label>
+            ${state.erroClaim ? `<p class="erro">${escapeHtml(state.erroClaim)}</p>` : ""}
+            <div class="modal-botoes">
+              <button class="btn-cancelar" onclick="fecharEscolha()">Cancelar</button>
+              <button class="btn-cadastrar" onclick="confirmarEscolha()">Confirmar escolha</button>
+            </div>
+          </div>
+        </div>`;
+    }
+  }
+
+  if (state.apagarAberto) {
+    const numeros = [...state.sorteados].sort((a, b) => a - b);
+    html += `
+      <div class="modal-fundo" onclick="fecharApagar()">
+        <div class="modal-caixa" onclick="event.stopPropagation()">
+          <h3>Apagar número</h3>
+          <p class="modal-mensagem">Toque no número que foi marcado por engano para desfazer a marcação.</p>
+          ${numeros.length === 0
+            ? `<p class="modal-mensagem">Nenhuma bola marcada ainda.</p>`
+            : `<div class="modal-numeros">${numeros.map((n) => `<button class="modal-pedra modal-pedra-clicavel" style="border-color:${corDoNumero(n)};background:${corDoNumero(n)}" onclick="removerNumero(${n})">${n} ✕</button>`).join("")}</div>`}
+          <div class="modal-botoes">
+            <button class="btn-cadastrar" onclick="fecharApagar()">Concluído</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (state.confirmacao) {
+    html += `
+      <div class="modal-fundo" onclick="cancelarConfirmacao()">
+        <div class="modal-caixa" onclick="event.stopPropagation()">
+          <h3>${state.confirmacao.perigo ? "Atenção" : "Confirmar"}</h3>
+          <p class="modal-mensagem">${escapeHtml(state.confirmacao.mensagem)}</p>
+          <div class="modal-botoes">
+            <button class="btn-cancelar" onclick="cancelarConfirmacao()">Cancelar</button>
+            <button class="${state.confirmacao.perigo ? "btn-perigo btn-perigo-cheio" : "btn-cadastrar"}" onclick="confirmarAcaoPendente()">${state.confirmacao.perigo ? "Sim, apagar tudo" : "Confirmar"}</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  return html;
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
 </body>
 </html>
