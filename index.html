@@ -198,7 +198,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Com Nome Completo e Celular do Jogador =====================
+// ===================== Painel de Bingo — Completo =====================
 const TOTAL_BOLAS = 90;
 const NUMEROS_POR_CARTELA = 15;
 const TOTAL_CARTELAS = 1000;
@@ -873,6 +873,9 @@ function htmlResultadoAdmin() {
 }
 
 function htmlTelaAdmin() {
+  // Garante que recarrega as cartelas atualizadas do localStorage ao abrir/atualizar a aba admin
+  state.cartelas = loadJSON(K.cards, state.cartelas);
+
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
   const chamadores = loadJSON(K.callers, []);
   const listaChamadoresHtml = chamadores.map(c => `
