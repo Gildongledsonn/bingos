@@ -198,7 +198,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Lógica com Master Admin e Chamadores Autorizados =====================
+// ===================== Painel de Bingo — Com Nome Completo e Celular do Jogador =====================
 const TOTAL_BOLAS = 90;
 const NUMEROS_POR_CARTELA = 15;
 const TOTAL_CARTELAS = 1000;
@@ -271,7 +271,7 @@ function sortear15(usados) {
 function gerarPool(qtd = TOTAL_CARTELAS) {
   const usados = new Set();
   const lista = [];
-  for (let i = 1; i <= qtd; i++) lista.push({ numero: i, dono: null, numeros: sortear15(usados) });
+  for (let i = 1; i <= qtd; i++) lista.push({ numero: i, dono: null, celular: null, numeros: sortear15(usados) });
   return lista;
 }
 
@@ -286,6 +286,7 @@ const state = {
   ganhadoresIds: new Set(),
   modalNumero: null,
   nomeClaim: "",
+  celularClaim: "",
   erroClaim: "",
   apagarAberto: false,
   confirmacao: null,
@@ -329,6 +330,8 @@ async function init() {
   if (!state.cartelas || state.cartelas.length === 0) {
     state.cartelas = gerarPool();
     saveJSON(K.cards, state.cartelas);
+  } else {
+    state.cartelas = state.cartelas.map(c => ({ ...c, celular: c.celular || null }));
   }
   state.sorteados = loadJSON(K.drawn, []);
   state.ganhadores = loadJSON(K.winners, []);
@@ -352,7 +355,14 @@ function checarGanhadores() {
     if (!c.dono || state.ganhadoresIds.has(c.numero)) return;
     if (c.numeros.every((n) => setSorteados.has(n))) {
       state.ganhadoresIds.add(c.numero);
-      novos.push({ numero: c.numero, dono: c.dono, hora: new Date().toLocaleTimeString("pt-BR") });
+      const telLimpo = (c.celular || "").replace(/\D/g, "");
+      const ultimos4 = telLimpo.length >= 4 ? telLimpo.slice(-4) : "0000";
+      novos.push({
+        numero: c.numero,
+        dono: c.dono,
+        celularUltimos4: ultimos4,
+        hora: new Date().toLocaleTimeString("pt-BR")
+      });
     }
   });
   if (novos.length) {
@@ -512,26 +522,47 @@ function confirmarAcaoPendente() {
 function abrirEscolha(numero) {
   state.modalNumero = numero;
   state.nomeClaim = "";
+  state.celularClaim = "";
   state.erroClaim = "";
   render();
 }
 function fecharEscolha() { state.modalNumero = null; render(); }
 
 function confirmarEscolha() {
-  const input = document.getElementById("input-nome-claim");
-  const nome = input ? input.value.trim() : "";
+  const inputNome = document.getElementById("input-nome-claim");
+  const inputCelular = document.getElementById("input-celular-claim");
+  const nome = inputNome ? inputNome.value.trim() : "";
+  const celular = inputCelular ? inputCelular.value.trim() : "";
+  
   state.nomeClaim = nome;
-  if (!nome) { state.erroClaim = "Informe o nome de quem está escolhendo a cartela."; render(); return; }
+  state.celularClaim = celular;
+
+  if (!nome) {
+    state.erroClaim = "Informe o seu nome completo.";
+    render();
+    return;
+  }
+  if (!celular) {
+    state.erroClaim = "Informe o seu número de celular.";
+    render();
+    return;
+  }
+
   const atuais = loadJSON(K.cards, state.cartelas);
   const idx = atuais.findIndex((c) => c.numero === state.modalNumero);
-  if (idx < 0) { state.erroClaim = "Essa cartela não existe mais."; render(); return; }
+  if (idx < 0) {
+    state.erroClaim = "Essa cartela não existe mais.";
+    render();
+    return;
+  }
   if (atuais[idx].dono) {
     state.cartelas = atuais;
     state.erroClaim = `Essa cartela já foi escolhida por ${atuais[idx].dono}. Escolha outra, por favor.`;
     render();
     return;
   }
-  atuais[idx] = { ...atuais[idx], dono: nome };
+
+  atuais[idx] = { ...atuais[idx], dono: nome, celular: celular };
   state.cartelas = atuais;
   saveJSON(K.cards, atuais);
   checarGanhadores();
@@ -553,7 +584,7 @@ function carregarMaisCartelas() {
 }
 
 function liberarCartela(numero) {
-  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: null } : c));
+  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: null, celular: null } : c));
   saveJSON(K.cards, state.cartelas);
   state.ganhadoresIds.delete(numero);
   render();
@@ -562,9 +593,15 @@ function salvarDono(numero, novoNome) {
   const nome = (novoNome || "").trim();
   const atual = state.cartelas.find((c) => c.numero === numero);
   if (atual && (atual.dono || "") === nome) return;
-  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: nome || null } : c));
+  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: nome || null, celular: nome ? c.celular : null } : c));
   saveJSON(K.cards, state.cartelas);
   checarGanhadores();
+  render();
+}
+function salvarCelular(numero, novoCel) {
+  const cel = (novoCel || "").trim();
+  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, celular: cel || null } : c));
+  saveJSON(K.cards, state.cartelas);
   render();
 }
 function buscarAdmin(valor) {
@@ -637,7 +674,7 @@ function htmlAuth() {
 
 function htmlFaixaGanhadores() {
   if (!state.ganhadores.length) return "";
-  return `<div class="faixa-ganhadores">${state.ganhadores.map((g) => `<span class="chip-ganhador">🏆 Cartela nº ${g.numero} — ${escapeHtml(g.dono)}</span>`).join("")}</div>`;
+  return `<div class="faixa-ganhadores">${state.ganhadores.map((g) => `<span class="chip-ganhador">🏆 Cartela nº ${g.numero} — ${escapeHtml(g.dono)} (Cel: ...${g.celularUltimos4})</span>`).join("")}</div>`;
 }
 
 function htmlJogador() {
@@ -650,7 +687,7 @@ function htmlJogador() {
           <span class="bola-logo">B</span>
           <div>
             <h1>Escolha sua cartela</h1>
-            <p>Toque em uma cartela disponível para reservar a sua</p>
+            <p>Toque em uma cartela disponível para registrar seu nome e celular</p>
           </div>
         </div>
         <div class="status-jogador">
@@ -805,7 +842,7 @@ function htmlTelaCartelas() {
 function adminFiltradas() {
   const termo = state.buscaAdmin.trim().toLowerCase();
   return state.cartelas
-    .filter((c) => (termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) : true))
+    .filter((c) => (termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) || (c.celular || "").includes(termo) : true))
     .sort((a, b) => a.numero - b.numero);
 }
 
@@ -818,6 +855,7 @@ function htmlResultadoAdmin() {
       <tr>
         <td>${c.numero}</td>
         <td><input class="input-edicao" placeholder="— disponível —" value="${escapeHtml(c.dono)}" onblur="salvarDono(${c.numero}, this.value)" /></td>
+        <td><input class="input-edicao" placeholder="— sem cel —" value="${escapeHtml(c.celular)}" onblur="salvarCelular(${c.numero}, this.value)" /></td>
         <td class="td-numeros">${c.numeros.join(", ")}</td>
         <td>${c.dono ? `<button class="btn-remover" onclick="liberarCartela(${c.numero})">Liberar</button>` : ""}</td>
       </tr>`
@@ -828,7 +866,7 @@ function htmlResultadoAdmin() {
     : "";
   return `
     <table>
-      <thead><tr><th>Nº</th><th>Dono</th><th>Números</th><th></th></tr></thead>
+      <thead><tr><th>Nº</th><th>Dono (Nome Completo)</th><th>Celular</th><th>Números</th><th></th></tr></thead>
       <tbody>${linhas}</tbody>
     </table>
     ${carregarMais}`;
@@ -869,8 +907,8 @@ function htmlTelaAdmin() {
       </div>
 
       <div class="admin-bloco">
-        <h2>Gerenciamento de Cartelas e Donos</h2>
-        <input class="busca-numero busca-admin" value="${escapeHtml(state.buscaAdmin)}" oninput="buscarAdmin(this.value)" placeholder="Buscar por número ou nome" />
+        <h2>Gerenciamento de Cartelas, Donos e Celulares</h2>
+        <input class="busca-numero busca-admin" value="${escapeHtml(state.buscaAdmin)}" oninput="buscarAdmin(this.value)" placeholder="Buscar por número, nome ou celular" />
         <div class="lista-cartelas" id="resultado-admin">${htmlResultadoAdmin()}</div>
       </div>
     </div>`;
@@ -887,9 +925,15 @@ function htmlModais() {
           <div class="modal-caixa" onclick="event.stopPropagation()">
             <h3>Escolher cartela nº ${c.numero}</h3>
             <div class="modal-numeros">${c.numeros.map((n) => `<span class="modal-pedra" style="border-color:${corDoNumero(n)}">${n}</span>`).join("")}</div>
-            <label class="modal-label">Nome de quem está adquirindo
-              <input id="input-nome-claim" value="${escapeHtml(state.nomeClaim)}" placeholder="Seu nome" onkeydown="if(event.key==='Enter') confirmarEscolha()" />
+            
+            <label class="modal-label">Nome completo
+              <input id="input-nome-claim" value="${escapeHtml(state.nomeClaim)}" placeholder="Digite seu nome completo" />
             </label>
+            
+            <label class="modal-label">Número de celular
+              <input id="input-celular-claim" type="tel" value="${escapeHtml(state.celularClaim)}" placeholder="(00) 00000-0000" onkeydown="if(event.key==='Enter') confirmarEscolha()" />
+            </label>
+
             ${state.erroClaim ? `<p class="erro">${escapeHtml(state.erroClaim)}</p>` : ""}
             <div class="modal-botoes">
               <button class="btn-cancelar" onclick="fecharEscolha()">Cancelar</button>
