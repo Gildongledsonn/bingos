@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Painel de Bingo</title>
+<title>Painel de Bingo por Salas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
@@ -38,12 +38,19 @@ button, input, select { font-family: inherit; }
 .conteudo { max-width: 1180px; margin: 0 auto; }
 .vazio, .vazio-inline { color: #b9c9bd; font-size: 14px; padding: 20px; text-align: center; }
 
-/* Tela de escolha de papel */
-.tela-escolha-papel { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; text-align: center; padding: 20px; }
+/* Tela de escolha de papel e sala */
+.tela-escolha-papel { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; text-align: center; padding: 20px; }
 .escolha-cabecalho { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .bola-logo-grande { width: 60px; height: 60px; font-size: 26px; }
 .escolha-cabecalho h1 { font-family: 'Fraunces', serif; font-size: 26px; margin: 4px 0 0; }
 .escolha-cabecalho p { color: #b9c9bd; font-size: 14px; margin: 0; }
+
+.caixa-sala {
+  background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 20px;
+  width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 10px; text-align: left;
+}
+.caixa-sala label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #cfe0d3; }
+
 .escolha-cartoes { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 620px; }
 .escolha-cartao {
   background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 22px;
@@ -198,7 +205,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Sincronizado =====================
+// ===================== Painel de Bingo — Por Salas Independentes =====================
 const TOTAL_BOLAS = 90;
 const NUMEROS_POR_CARTELA = 15;
 const TOTAL_CARTELAS = 1000;
@@ -212,12 +219,12 @@ function corDoNumero(n) {
   return COLUNA_COR[idx];
 }
 
-const K = {
-  cards: "bingo-cartelas",
-  drawn: "bingo-sorteados",
-  winners: "bingo-ganhadores",
-  callers: "bingo-chamadores-autorizados",
-};
+const GLOBAL_CALLERS_KEY = "bingo-chamadores-autorizados";
+
+function getKey(tipo, sala) {
+  const s = (sala || "geral").toLowerCase().trim();
+  return `bingo-${tipo}-${s}`;
+}
 
 function loadJSON(key, fallback) {
   try {
@@ -276,6 +283,7 @@ function gerarPool(qtd = TOTAL_CARTELAS) {
 }
 
 const state = {
+  sala: "geral",
   papel: null,
   tipoOperador: null,
   usuarioLogado: "",
@@ -300,6 +308,8 @@ const state = {
   novoChamadorUser: "",
   novoChamadorPass: "",
   erroChamador: "",
+  inputSala: "",
+  erroSala: "",
 };
 
 async function initMasterAdmin() {
@@ -307,45 +317,49 @@ async function initMasterAdmin() {
   const masterPass = "159753@bingos";
   const passHash = await hashTexto(masterPass);
   
-  let chamadores = loadJSON(K.callers, null);
+  let chamadores = loadJSON(GLOBAL_CALLERS_KEY, null);
   if (!chamadores) {
     chamadores = [{ usuario: masterUser, hash: passHash, master: true }];
-    saveJSON(K.callers, chamadores);
+    saveJSON(GLOBAL_CALLERS_KEY, chamadores);
   } else {
     const idx = chamadores.findIndex(c => c.usuario.toLowerCase() === masterUser.toLowerCase());
     if (idx < 0) {
       chamadores.unshift({ usuario: masterUser, hash: passHash, master: true });
-      saveJSON(K.callers, chamadores);
+      saveJSON(GLOBAL_CALLERS_KEY, chamadores);
     } else {
       chamadores[idx].hash = passHash;
       chamadores[idx].master = true;
-      saveJSON(K.callers, chamadores);
+      saveJSON(GLOBAL_CALLERS_KEY, chamadores);
     }
   }
 }
 
 async function init() {
   await initMasterAdmin();
-  state.cartelas = loadJSON(K.cards, []);
-  if (!state.cartelas || state.cartelas.length === 0) {
-    state.cartelas = gerarPool();
-    saveJSON(K.cards, state.cartelas);
-  } else {
-    state.cartelas = state.cartelas.map(c => ({ ...c, celular: c.celular || null }));
-  }
-  state.sorteados = loadJSON(K.drawn, []);
-  state.ganhadores = loadJSON(K.winners, []);
-  state.ganhadoresIds = new Set(state.ganhadores.map((g) => g.numero));
+  carregarDadosSala();
   render();
 }
 
-// Sincronização automática entre abas ou dispositivos abertos no navegador
-window.addEventListener("storage", (e) => {
-  if (![K.cards, K.drawn, K.winners, K.callers].includes(e.key)) return;
-  state.cartelas = loadJSON(K.cards, state.cartelas);
-  state.sorteados = loadJSON(K.drawn, state.sorteados);
-  state.ganhadores = loadJSON(K.winners, state.ganhadores);
+function carregarDadosSala() {
+  const kCards = getKey("cartelas", state.sala);
+  const kDrawn = getKey("sorteados", state.sala);
+  const kWinners = getKey("ganhadores", state.sala);
+
+  state.cartelas = loadJSON(kCards, []);
+  if (!state.cartelas || state.cartelas.length === 0) {
+    state.cartelas = gerarPool();
+    saveJSON(kCards, state.cartelas);
+  } else {
+    state.cartelas = state.cartelas.map(c => ({ ...c, celular: c.celular || null }));
+  }
+  state.sorteados = loadJSON(kDrawn, []);
+  state.ganhadores = loadJSON(kWinners, []);
   state.ganhadoresIds = new Set(state.ganhadores.map((g) => g.numero));
+}
+
+window.addEventListener("storage", (e) => {
+  if (!e.key || !e.key.includes(state.sala)) return;
+  carregarDadosSala();
   render();
 });
 
@@ -368,8 +382,22 @@ function checarGanhadores() {
   });
   if (novos.length) {
     state.ganhadores = [...state.ganhadores, ...novos];
-    saveJSON(K.winners, state.ganhadores);
+    saveJSON(getKey("ganhadores", state.sala), state.ganhadores);
   }
+}
+
+function entrarNaSala(papel) {
+  const input = document.getElementById("input-nome-sala");
+  const nomeSala = (input ? input.value : state.inputSala).trim();
+  if (!nomeSala) {
+    state.erroSala = "Digite o nome da sala ou do chamador.";
+    render();
+    return;
+  }
+  state.sala = nomeSala;
+  state.erroSala = "";
+  carregarDadosSala();
+  escolherPapel(papel);
 }
 
 function escolherPapel(papel) {
@@ -394,7 +422,7 @@ async function fazerLoginOperador() {
     return;
   }
   const hash = await hashTexto(senha);
-  const chamadores = loadJSON(K.callers, []);
+  const chamadores = loadJSON(GLOBAL_CALLERS_KEY, []);
   const encontrado = chamadores.find(c => c.usuario.toLowerCase() === usuario.toLowerCase() && c.hash === hash);
 
   if (encontrado) {
@@ -431,14 +459,14 @@ async function adicionarChamador() {
     return;
   }
   const hash = await hashTexto(s);
-  const chamadores = loadJSON(K.callers, []);
+  const chamadores = loadJSON(GLOBAL_CALLERS_KEY, []);
   if (chamadores.some(c => c.usuario.toLowerCase() === u.toLowerCase())) {
     state.erroChamador = "Este usuário já existe.";
     render();
     return;
   }
   chamadores.push({ usuario: u, hash, master: false });
-  saveJSON(K.callers, chamadores);
+  saveJSON(GLOBAL_CALLERS_KEY, chamadores);
   state.novoChamadorUser = "";
   state.novoChamadorPass = "";
   state.erroChamador = "";
@@ -447,16 +475,16 @@ async function adicionarChamador() {
 
 function removerChamador(usuario) {
   if (usuario.toLowerCase() === "gildongledson") return;
-  let chamadores = loadJSON(K.callers, []);
+  let chamadores = loadJSON(GLOBAL_CALLERS_KEY, []);
   chamadores = chamadores.filter(c => c.usuario.toLowerCase() !== usuario.toLowerCase());
-  saveJSON(K.callers, chamadores);
+  saveJSON(GLOBAL_CALLERS_KEY, chamadores);
   render();
 }
 
 function marcarBola(n) {
   if (state.sorteados.includes(n)) return;
   state.sorteados = [...state.sorteados, n];
-  saveJSON(K.drawn, state.sorteados);
+  saveJSON(getKey("sorteados", state.sala), state.sorteados);
   checarGanhadores();
   render();
 }
@@ -466,7 +494,7 @@ function fecharApagar() { state.apagarAberto = false; render(); }
 
 function removerNumero(n) {
   state.sorteados = state.sorteados.filter((x) => x !== n);
-  saveJSON(K.drawn, state.sorteados);
+  saveJSON(getKey("sorteados", state.sala), state.sorteados);
   const setSorteados = new Set(state.sorteados);
   const porNumero = {};
   state.cartelas.forEach((c) => (porNumero[c.numero] = c));
@@ -477,14 +505,14 @@ function removerNumero(n) {
   if (validos.length !== state.ganhadores.length) {
     state.ganhadores = validos;
     state.ganhadoresIds = new Set(validos.map((g) => g.numero));
-    saveJSON(K.winners, validos);
+    saveJSON(getKey("ganhadores", state.sala), validos);
   }
   render();
 }
 
 function pedirReiniciar() {
   state.confirmacao = {
-    mensagem: "Reiniciar a partida? As bolas sorteadas e os ganhadores serão apagados. As cartelas e quem escolheu cada uma permanecem.",
+    mensagem: `Reiniciar a partida da sala "${state.sala}"? As bolas sorteadas e os ganhadores serão apagados. As cartelas permanecem.`,
     acao: "reiniciar",
     perigo: false,
   };
@@ -492,7 +520,7 @@ function pedirReiniciar() {
 }
 function pedirGerarPool() {
   state.confirmacao = {
-    mensagem: `Isso apaga TODAS as ${TOTAL_CARTELAS} cartelas, quem escolheu cada uma, as bolas sorteadas e os ganhadores, gerando um novo baralho do zero. Deseja continuar?`,
+    mensagem: `Isso apaga TODAS as ${TOTAL_CARTELAS} cartelas da sala "${state.sala}", gerando um novo baralho do zero. Deseja continuar?`,
     acao: "gerarPool",
     perigo: true,
   };
@@ -501,20 +529,24 @@ function pedirGerarPool() {
 function cancelarConfirmacao() { state.confirmacao = null; render(); }
 function confirmarAcaoPendente() {
   if (!state.confirmacao) return;
+  const kCards = getKey("cartelas", state.sala);
+  const kDrawn = getKey("sorteados", state.sala);
+  const kWinners = getKey("ganhadores", state.sala);
+
   if (state.confirmacao.acao === "reiniciar") {
     state.sorteados = [];
     state.ganhadores = [];
     state.ganhadoresIds = new Set();
-    saveJSON(K.drawn, []);
-    saveJSON(K.winners, []);
+    saveJSON(kDrawn, []);
+    saveJSON(kWinners, []);
   } else if (state.confirmacao.acao === "gerarPool") {
     state.cartelas = gerarPool();
     state.sorteados = [];
     state.ganhadores = [];
     state.ganhadoresIds = new Set();
-    saveJSON(K.cards, state.cartelas);
-    saveJSON(K.drawn, []);
-    saveJSON(K.winners, []);
+    saveJSON(kCards, state.cartelas);
+    saveJSON(kDrawn, []);
+    saveJSON(kWinners, []);
   }
   state.confirmacao = null;
   render();
@@ -549,7 +581,8 @@ function confirmarEscolha() {
     return;
   }
 
-  const atuais = loadJSON(K.cards, state.cartelas);
+  const kCards = getKey("cartelas", state.sala);
+  const atuais = loadJSON(kCards, state.cartelas);
   const idx = atuais.findIndex((c) => c.numero === state.modalNumero);
   if (idx < 0) {
     state.erroClaim = "Essa cartela não existe mais.";
@@ -565,7 +598,7 @@ function confirmarEscolha() {
 
   atuais[idx] = { ...atuais[idx], dono: nome, celular: celular };
   state.cartelas = atuais;
-  saveJSON(K.cards, atuais);
+  saveJSON(kCards, atuais);
   checarGanhadores();
   state.modalNumero = null;
   render();
@@ -586,7 +619,7 @@ function carregarMaisCartelas() {
 
 function liberarCartela(numero) {
   state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: null, celular: null } : c));
-  saveJSON(K.cards, state.cartelas);
+  saveJSON(getKey("cartelas", state.sala), state.cartelas);
   state.ganhadoresIds.delete(numero);
   render();
 }
@@ -595,14 +628,14 @@ function salvarDono(numero, novoNome) {
   const atual = state.cartelas.find((c) => c.numero === numero);
   if (atual && (atual.dono || "") === nome) return;
   state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: nome || null, celular: nome ? c.celular : null } : c));
-  saveJSON(K.cards, state.cartelas);
+  saveJSON(getKey("cartelas", state.sala), state.cartelas);
   checarGanhadores();
   render();
 }
 function salvarCelular(numero, novoCel) {
   const cel = (novoCel || "").trim();
   state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, celular: cel || null } : c));
-  saveJSON(K.cards, state.cartelas);
+  saveJSON(getKey("cartelas", state.sala), state.cartelas);
   render();
 }
 function buscarAdmin(valor) {
@@ -631,23 +664,32 @@ function render() {
 }
 
 function htmlEscolhaPapel() {
+  const salaValor = escapeHtml(state.inputSala || "sala1");
   return `
     <div class="tela-escolha-papel">
       <div class="escolha-cabecalho">
         <span class="bola-logo bola-logo-grande">B</span>
-        <h1>Painel de Bingo</h1>
-        <p>Como você vai usar o app agora?</p>
+        <h1>Painel de Bingo por Salas</h1>
+        <p>Informe a sala ou o nome do chamador para acessar a instância correta</p>
       </div>
+
+      <div class="caixa-sala">
+        <label>Nome da Sala / Chamador
+          <input id="input-nome-sala" value="${salaValor}" placeholder="Ex.: sala-do-gil, joao" oninput="state.inputSala=this.value" />
+        </label>
+        ${state.erroSala ? `<p class="erro">${escapeHtml(state.erroSala)}</p>` : ""}
+      </div>
+
       <div class="escolha-cartoes">
-        <button class="escolha-cartao" onclick="escolherPapel('jogador')">
+        <button class="escolha-cartao" onclick="entrarNaSala('jogador')">
           <span class="escolha-emoji">🎟️</span>
           <span class="escolha-titulo">Sou jogador</span>
-          <span class="escolha-descricao">Escolher minha cartela e acompanhar a partida</span>
+          <span class="escolha-descricao">Escolher cartela nesta sala</span>
         </button>
-        <button class="escolha-cartao" onclick="escolherPapel('operador')">
+        <button class="escolha-cartao" onclick="entrarNaSala('operador')">
           <span class="escolha-emoji">🎙️</span>
           <span class="escolha-titulo">Sou operador / Admin</span>
-          <span class="escolha-descricao">Acessar com login e senha autorizados</span>
+          <span class="escolha-descricao">Gerenciar a sala informada</span>
         </button>
       </div>
     </div>`;
@@ -658,8 +700,8 @@ function htmlAuth() {
   return `
     <div class="tela-auth">
       <div class="form-auth">
-        <h2>Entrar no Painel</h2>
-        <p class="subtitulo">Insira suas credenciais de operador ou administrador autorizadas.</p>
+        <h2>Entrar na Sala: <strong>${escapeHtml(state.sala)}</strong></h2>
+        <p class="subtitulo">Insira suas credenciais autorizadas.</p>
         <label>Usuário
           <input id="auth-usuario" value="${usuarioValor}" placeholder="Seu usuário" />
         </label>
@@ -679,6 +721,7 @@ function htmlFaixaGanhadores() {
 }
 
 function htmlJogador() {
+  carregarDadosSala();
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
   const ultimaBola = state.sorteados[state.sorteados.length - 1];
   return `
@@ -687,7 +730,7 @@ function htmlJogador() {
         <div class="topo-titulo">
           <span class="bola-logo">B</span>
           <div>
-            <h1>Escolha sua cartela</h1>
+            <h1>Sala: ${escapeHtml(state.sala)}</h1>
             <p>Toque em uma cartela disponível para registrar seu nome e celular</p>
           </div>
         </div>
@@ -699,18 +742,19 @@ function htmlJogador() {
       </header>
       ${htmlFaixaGanhadores()}
       <main class="conteudo">${htmlTelaCartelas()}</main>
-      <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Voltar ao início</button>
+      <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Trocar de sala / início</button>
     </div>`;
 }
 
 function htmlOperador() {
+  carregarDadosSala();
   const isMaster = state.tipoOperador === "master";
   return `
     <header class="topo">
       <div class="topo-titulo">
         <span class="bola-logo">B</span>
         <div>
-          <h1>Painel de Bingo</h1>
+          <h1>Painel da Sala: ${escapeHtml(state.sala)}</h1>
           <p>${isMaster ? "Administrador Master" : "Chamador Autorizado"}</p>
         </div>
       </div>
@@ -722,7 +766,7 @@ function htmlOperador() {
     </header>
     <div class="faixa-sessao">
       <span class="badge-sessao">Logado como: <strong>${escapeHtml(state.usuarioLogado)}</strong></span>
-      <button class="btn-sair" onclick="sairOperador()">Sair</button>
+      <button class="btn-sair" onclick="sairOperador()">Sair da Sala</button>
     </div>
     ${htmlFaixaGanhadores()}
     <main class="conteudo">
@@ -730,7 +774,7 @@ function htmlOperador() {
       ${state.aba === "cartelas" ? htmlTelaCartelas() : ""}
       ${state.aba === "admin" && isMaster ? htmlTelaAdmin() : ""}
     </main>
-    <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Trocar de painel</button>`;
+    <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Trocar de sala</button>`;
 }
 
 function htmlTelaChamada() {
@@ -756,7 +800,7 @@ function htmlTelaChamada() {
           <div><strong>${TOTAL_BOLAS - state.sorteados.length}</strong><span>restantes</span></div>
           <div><strong>${state.cartelas.length - disponiveis}</strong><span>escolhidas</span></div>
         </div>
-        <p class="instrucao">Toque no número anunciado no globo para marcá-lo. Uma vez marcado, você pode apagar usando o botão abaixo se houver engano.</p>
+        <p class="instrucao">Toque no número anunciado no globo para marcá-lo nesta sala.</p>
         <button class="btn-apagar-numero" onclick="abrirApagar()">Apagar número</button>
         <button class="btn-reiniciar" onclick="pedirReiniciar()">Reiniciar partida</button>
       </div>
@@ -874,11 +918,9 @@ function htmlResultadoAdmin() {
 }
 
 function htmlTelaAdmin() {
-  // Força a atualização dos dados salvos no navegador ao carregar/recarregar a aba de admin
-  state.cartelas = loadJSON(K.cards, state.cartelas);
-
+  carregarDadosSala();
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  const chamadores = loadJSON(K.callers, []);
+  const chamadores = loadJSON(GLOBAL_CALLERS_KEY, []);
   const listaChamadoresHtml = chamadores.map(c => `
     <div class="item-chamador">
       <span><strong>${escapeHtml(c.usuario)}</strong> ${c.usuario.toLowerCase() === 'gildongledson' ? '(Master Admin)' : ''}</span>
@@ -890,7 +932,7 @@ function htmlTelaAdmin() {
     <div class="tela-admin">
       <div class="admin-bloco">
         <h2>Gerenciar Chamadores Autorizados</h2>
-        <p>Como Administrador Master, você pode cadastrar usuários e senhas para permitir que outras pessoas atuem como chamadores.</p>
+        <p>Como Administrador Master, você pode cadastrar usuários e senhas globais para operadores.</p>
         <div class="form-novo-chamador">
           <label>Usuário
             <input id="novo-chamador-user" value="${escapeHtml(state.novoChamadorUser)}" placeholder="Nome do chamador" />
@@ -905,13 +947,13 @@ function htmlTelaAdmin() {
       </div>
 
       <div class="admin-bloco">
-        <h2>Baralho de cartelas</h2>
+        <h2>Baralho da Sala: ${escapeHtml(state.sala)}</h2>
         <p>${state.cartelas.length} cartelas geradas · ${disponiveis} disponíveis · ${state.cartelas.length - disponiveis} escolhidas.</p>
-        <button class="btn-perigo" onclick="pedirGerarPool()">Apagar tudo e gerar novo baralho de ${TOTAL_CARTELAS}</button>
+        <button class="btn-perigo" onclick="pedirGerarPool()">Apagar tudo e gerar novo baralho nesta sala</button>
       </div>
 
       <div class="admin-bloco">
-        <h2>Gerenciamento de Cartelas, Donos e Celulares</h2>
+        <h2>Gerenciamento de Cartelas da Sala</h2>
         <input class="busca-numero busca-admin" value="${escapeHtml(state.buscaAdmin)}" oninput="buscarAdmin(this.value)" placeholder="Buscar por número, nome ou celular" />
         <div class="lista-cartelas" id="resultado-admin">${htmlResultadoAdmin()}</div>
       </div>
