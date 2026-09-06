@@ -198,7 +198,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Completo =====================
+// ===================== Painel de Bingo — Sincronizado =====================
 const TOTAL_BOLAS = 90;
 const NUMEROS_POR_CARTELA = 15;
 const TOTAL_CARTELAS = 1000;
@@ -339,6 +339,7 @@ async function init() {
   render();
 }
 
+// Sincronização automática entre abas ou dispositivos abertos no navegador
 window.addEventListener("storage", (e) => {
   if (![K.cards, K.drawn, K.winners, K.callers].includes(e.key)) return;
   state.cartelas = loadJSON(K.cards, state.cartelas);
@@ -873,7 +874,7 @@ function htmlResultadoAdmin() {
 }
 
 function htmlTelaAdmin() {
-  // Garante que recarrega as cartelas atualizadas do localStorage ao abrir/atualizar a aba admin
+  // Força a atualização dos dados salvos no navegador ao carregar/recarregar a aba de admin
   state.cartelas = loadJSON(K.cards, state.cartelas);
 
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
