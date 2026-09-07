@@ -208,7 +208,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Corrigido Faixas Estritas 5x5 (1-75) e 5x3 (1-90) =====================
+// ===================== Painel de Bingo — Colunas Rigorosas B-I-N-G-O =====================
 const TOTAL_CARTELAS = 1000;
 const PAGINA = 60;
 const COLUNA_COR = [
@@ -262,11 +262,11 @@ async function hashTexto(txt) {
   return "fallback-" + hash.toString(16);
 }
 
-// Gera os números organizados por colunas (B-I-N-G-O) respeitando os limites exatos das faixas
+// Gera números estritamente dentro das colunas B-I-N-G-O (1-15, 16-30, 31-45, 46-60, 61-75 para 5x5)
 function gerarNumerosPorFaixa(modelo, usados) {
-  const colunas = modelo === "5x5" ? 5 : 3; 
-  const linhas = modelo === "5x5" ? 5 : 5;  
-  const tamanhoFaixa = 15; 
+  const colunas = modelo === "5x5" ? 5 : 5; // 5 colunas (B-I-N-G-O) para ambos
+  const linhas = modelo === "5x5" ? 5 : 3;  // 5x5 tem 5 linhas (25 num), 5x3 tem 3 linhas (15 num)
+  const tamanhoFaixa = 15; // 1-15, 16-30, 31-45, 46-60, 61-75
 
   let chave;
   let cartelaNumeros;
@@ -729,8 +729,8 @@ function htmlEscolhaPapel() {
 
         <label>Modelo da Cartela & Globo
           <select id="select-modelo-cartela" onchange="state.inputModelo=this.value">
-            <option value="5x3" ${state.inputModelo === '5x3' ? 'selected' : ''}>Cartela 5x3 (B-I-N-G-O / 90 bolas)</option>
-            <option value="5x5" ${state.inputModelo === '5x5' ? 'selected' : ''}>Cartela 5x5 (B-I-N-G-O / 75 bolas)</option>
+            <option value="5x3" ${state.inputModelo === '5x3' ? 'selected' : ''}>Cartela 5x3 (15 números / 90 bolas)</option>
+            <option value="5x5" ${state.inputModelo === '5x5' ? 'selected' : ''}>Cartela 5x5 (25 números / 75 bolas)</option>
           </select>
         </label>
 
@@ -870,10 +870,10 @@ function htmlTelaChamada() {
 
 function renderizarGridCartela(numeros, set, ehDisponivel = false) {
   const letras = ['B', 'I', 'N', 'G', 'O'];
-  const colunasQtd = state.modeloSala === "5x5" ? 5 : 3;
-  const linhasQtd = 5;
+  const colunasQtd = 5;
+  const linhasQtd = state.modeloSala === "5x5" ? 5 : 3;
 
-  let cabecalhoHtml = `<div class="cartela-linha">${letras.slice(0, colunasQtd).map(l => `<span class="coluna-letra">${l}</span>`).join('')}</div>`;
+  let cabecalhoHtml = `<div class="cartela-linha">${letras.map(l => `<span class="coluna-letra">${l}</span>`).join('')}</div>`;
   let linhasHtml = "";
 
   for (let l = 0; l < linhasQtd; l++) {
