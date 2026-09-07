@@ -208,7 +208,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Colunas Rigorosas B-I-N-G-O =====================
+// ===================== Painel de Bingo — Cartelas 5x5 e 5x3 estruturadas por colunas verticais =====================
 const TOTAL_CARTELAS = 1000;
 const PAGINA = 60;
 const COLUNA_COR = [
@@ -262,44 +262,48 @@ async function hashTexto(txt) {
   return "fallback-" + hash.toString(16);
 }
 
-// Gera números estritamente dentro das colunas B-I-N-G-O (1-15, 16-30, 31-45, 46-60, 61-75 para 5x5)
-function gerarNumerosPorFaixa(modelo, usados) {
-  const colunas = modelo === "5x5" ? 5 : 5; // 5 colunas (B-I-N-G-O) para ambos
-  const linhas = modelo === "5x5" ? 5 : 3;  // 5x5 tem 5 linhas (25 num), 5x3 tem 3 linhas (15 num)
-  const tamanhoFaixa = 15; // 1-15, 16-30, 31-45, 46-60, 61-75
+// Gera os números estruturados estritamente em colunas verticais
+function gerarNumerosPorColunas(modelo, usados) {
+  const colunasQtd = 5; // B, I, N, G, O
+  const linhasQtd = modelo === "5x5" ? 5 : 3; // 5 linhas para 5x5 (25 num), 3 linhas para 5x3 (15 num)
+  const tamanhoFaixa = 15;
 
   let chave;
-  let cartelaNumeros;
+  let cartelaMatriz; // array de colunas: [[col0], [col1], ...]
 
   do {
-    cartelaNumeros = [];
-    for (let c = 0; c < colunas; c++) {
+    cartelaMatriz = [];
+    for (let c = 0; c < colunasQtd; c++) {
       const inicio = c * tamanhoFaixa + 1;
       const fim = (c + 1) * tamanhoFaixa;
       
       const faixa = [];
       for (let n = inicio; n <= fim; n++) faixa.push(n);
 
+      // Embaralha a faixa da coluna
       for (let i = faixa.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [faixa[i], faixa[j]] = [faixa[j], faixa[i]];
       }
 
-      const escolhidos = faixa.slice(0, linhas).sort((a, b) => a - b);
-      cartelaNumeros.push(escolhidos);
+      // Pega a quantidade exata de números para esta coluna de acordo com o modelo (linhas)
+      const escolhidos = faixa.slice(0, linhasQtd).sort((a, b) => a - b);
+      cartelaMatriz.push(escolhidos);
     }
 
-    let listaPlana = [];
-    for (let r = 0; r < linhas; r++) {
-      for (let c = 0; c < colunas; c++) {
-        listaPlana.push(cartelaNumeros[c][r]);
+    // Transforma a matriz de colunas em uma matriz organizada por linhas para exibição e conferência
+    // Cada linha conterá 1 elemento de cada coluna sequencialmente (B, I, N, G, O)
+    let listaPorLinhas = [];
+    for (let r = 0; r < linhasQtd; r++) {
+      for (let c = 0; c < colunasQtd; c++) {
+        listaPorLinhas.push(cartelaMatriz[c][r]);
       }
     }
 
-    chave = listaPlana.join(",");
+    chave = listaPorLinhas.join(",");
     if (!usados.has(chave)) {
       usados.add(chave);
-      return listaPlana;
+      return listaPorLinhas;
     }
   } while (true);
 }
@@ -312,7 +316,7 @@ function gerarPool(modelo, qtd = TOTAL_CARTELAS) {
       numero: i,
       dono: null,
       celular: null,
-      numeros: gerarNumerosPorFaixa(modelo, usados)
+      numeros: gerarNumerosPorColunas(modelo, usados)
     });
   }
   return lista;
