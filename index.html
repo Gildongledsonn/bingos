@@ -208,7 +208,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Colunas por Faixas B-I-N-G-O sem espaços livres =====================
+// ===================== Painel de Bingo — Corrigido Faixas Estritas 5x5 (1-75) e 5x3 (1-90) =====================
 const TOTAL_CARTELAS = 1000;
 const PAGINA = 60;
 const COLUNA_COR = [
@@ -262,39 +262,33 @@ async function hashTexto(txt) {
   return "fallback-" + hash.toString(16);
 }
 
-// Gera números respeitando estritamente as faixas por coluna (1 a 15, 16 a 30, etc.)
+// Gera os números organizados por colunas (B-I-N-G-O) respeitando os limites exatos das faixas
 function gerarNumerosPorFaixa(modelo, usados) {
-  const colunas = modelo === "5x5" ? 5 : 3; // 5 colunas para 5x5, 3 colunas para 5x3
-  const linhas = modelo === "5x5" ? 5 : 5;  // 5 linhas para 5x5 (25 num), 5 linhas para 5x3 (15 num)
-  const tamanhoFaixa = 15; // Cada letra do BINGO abrange 15 números
+  const colunas = modelo === "5x5" ? 5 : 3; 
+  const linhas = modelo === "5x5" ? 5 : 5;  
+  const tamanhoFaixa = 15; 
 
   let chave;
   let cartelaNumeros;
 
   do {
     cartelaNumeros = [];
-    let colValidas = true;
-
     for (let c = 0; c < colunas; c++) {
       const inicio = c * tamanhoFaixa + 1;
       const fim = (c + 1) * tamanhoFaixa;
       
-      // Pega números disponíveis nessa faixa exata
       const faixa = [];
       for (let n = inicio; n <= fim; n++) faixa.push(n);
 
-      // Embaralha a faixa
       for (let i = faixa.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [faixa[i], faixa[j]] = [faixa[j], faixa[i]];
       }
 
-      // Seleciona a quantidade exata para esta coluna (linhas)
       const escolhidos = faixa.slice(0, linhas).sort((a, b) => a - b);
       cartelaNumeros.push(escolhidos);
     }
 
-    // Achata a matriz de colunas para uma lista sequencial por linha
     let listaPlana = [];
     for (let r = 0; r < linhas; r++) {
       for (let c = 0; c < colunas; c++) {
@@ -876,11 +870,10 @@ function htmlTelaChamada() {
 
 function renderizarGridCartela(numeros, set, ehDisponivel = false) {
   const letras = ['B', 'I', 'N', 'G', 'O'];
-  const colunasQtd = 5;
-  const linhasQtd = state.modeloSala === "5x5" ? 5 : 3;
+  const colunasQtd = state.modeloSala === "5x5" ? 5 : 3;
+  const linhasQtd = 5;
 
-  // Cabeçalho com as letras B-I-N-G-O
-  let cabecalhoHtml = `<div class="cartela-linha">${letras.map(l => `<span class="coluna-letra">${l}</span>`).join('')}</div>`;
+  let cabecalhoHtml = `<div class="cartela-linha">${letras.slice(0, colunasQtd).map(l => `<span class="coluna-letra">${l}</span>`).join('')}</div>`;
   let linhasHtml = "";
 
   for (let l = 0; l < linhasQtd; l++) {
