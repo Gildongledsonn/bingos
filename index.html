@@ -208,7 +208,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Cartela 5x3 com faixas B (1-18), I (19-36), N (37-54), G (55-72), O (73-90) =====================
+// ===================== Painel de Bingo — Cartelas 5x5 e 5x3 estruturadas por colunas verticais =====================
 const TOTAL_CARTELAS = 1000;
 const PAGINA = 60;
 const COLUNA_COR = [
@@ -262,63 +262,14 @@ async function hashTexto(txt) {
   return "fallback-" + hash.toString(16);
 }
 
-// Gera os números estritamente nas faixas B:1-18, I:19-36, N:37-54, G:55-72, O:73-90 para a cartela 5x3 (15 números)
-function gerarNumerosPorFaixa5x3(usados) {
+// Gera os números estruturados estritamente em colunas verticais
+function gerarNumerosPorColunas(modelo, usados) {
   const colunasQtd = 5; // B, I, N, G, O
-  const linhasQtd = 3;  // 3 linhas
-  const faixas = [
-    { inicio: 1, fim: 18 },   // B
-    { inicio: 19, fim: 36 },  // I
-    { inicio: 37, fim: 54 },  // N
-    { inicio: 55, fim: 72 },  // G
-    { inicio: 73, fim: 90 }   // O
-  ];
-
-  let chave;
-  let cartelaMatriz;
-
-  do {
-    cartelaMatriz = [];
-    for (let c = 0; c < colunasQtd; c++) {
-      const f = faixas[c];
-      const faixa = [];
-      for (let n = f.inicio; n <= f.fim; n++) faixa.push(n);
-
-      // Embaralha a faixa da coluna
-      for (let i = faixa.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [faixa[i], faixa[j]] = [faixa[j], faixa[i]];
-      }
-
-      // Pega 3 números ordenados para esta coluna
-      const escolhidos = faixa.slice(0, linhasQtd).sort((a, b) => a - b);
-      cartelaMatriz.push(escolhidos);
-    }
-
-    // Organiza por linhas
-    let listaPorLinhas = [];
-    for (let r = 0; r < linhasQtd; r++) {
-      for (let c = 0; c < colunasQtd; c++) {
-        listaPorLinhas.push(cartelaMatriz[c][r]);
-      }
-    }
-
-    chave = listaPorLinhas.join(",");
-    if (!usados.has(chave)) {
-      usados.add(chave);
-      return listaPorLinhas;
-    }
-  } while (true);
-}
-
-// Para 5x5 mantém o padrão proporcional de 75 bolas (B:1-15, I:16-30, N:31-45, G:46-60, O:61-75)
-function gerarNumerosPorFaixa5x5(usados) {
-  const colunasQtd = 5;
-  const linhasQtd = 5;
+  const linhasQtd = modelo === "5x5" ? 5 : 3; // 5 linhas para 5x5 (25 num), 3 linhas para 5x3 (15 num)
   const tamanhoFaixa = 15;
 
   let chave;
-  let cartelaMatriz;
+  let cartelaMatriz; // array de colunas: [[col0], [col1], ...]
 
   do {
     cartelaMatriz = [];
@@ -329,15 +280,19 @@ function gerarNumerosPorFaixa5x5(usados) {
       const faixa = [];
       for (let n = inicio; n <= fim; n++) faixa.push(n);
 
+      // Embaralha a faixa da coluna
       for (let i = faixa.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [faixa[i], faixa[j]] = [faixa[j], faixa[i]];
       }
 
+      // Pega a quantidade exata de números para esta coluna de acordo com o modelo (linhas)
       const escolhidos = faixa.slice(0, linhasQtd).sort((a, b) => a - b);
       cartelaMatriz.push(escolhidos);
     }
 
+    // Transforma a matriz de colunas em uma matriz organizada por linhas para exibição e conferência
+    // Cada linha conterá 1 elemento de cada coluna sequencialmente (B, I, N, G, O)
     let listaPorLinhas = [];
     for (let r = 0; r < linhasQtd; r++) {
       for (let c = 0; c < colunasQtd; c++) {
@@ -357,12 +312,11 @@ function gerarPool(modelo, qtd = TOTAL_CARTELAS) {
   const usados = new Set();
   const lista = [];
   for (let i = 1; i <= qtd; i++) {
-    const numeros = modelo === "5x3" ? gerarNumerosPorFaixa5x3(usados) : gerarNumerosPorFaixa5x5(usados);
     lista.push({
       numero: i,
       dono: null,
       celular: null,
-      numeros: numeros
+      numeros: gerarNumerosPorColunas(modelo, usados)
     });
   }
   return lista;
@@ -779,7 +733,7 @@ function htmlEscolhaPapel() {
 
         <label>Modelo da Cartela & Globo
           <select id="select-modelo-cartela" onchange="state.inputModelo=this.value">
-            <option value="5x3" ${state.inputModelo === '5x3' ? 'selected' : ''}>Cartela 5x3 (15 números / 90 bolas - B:1-18, I:19-36, N:37-54, G:55-72, O:73-90)</option>
+            <option value="5x3" ${state.inputModelo === '5x3' ? 'selected' : ''}>Cartela 5x3 (15 números / 90 bolas)</option>
             <option value="5x5" ${state.inputModelo === '5x5' ? 'selected' : ''}>Cartela 5x5 (25 números / 75 bolas)</option>
           </select>
         </label>
