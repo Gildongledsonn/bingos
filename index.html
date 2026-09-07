@@ -122,7 +122,7 @@ button, input, select { font-family: inherit; }
 
 /* Cartelas — filtros */
 .barra-filtros { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.filtro-botoes { display: flex; gap: 6px; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 9px; }
+.filtro-botoes { display: flex; gap: 6px; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 9px; flex-wrap: wrap; }
 .filtro-botoes button { background: transparent; border: none; color: #cfe0d3; padding: 7px 12px; border-radius: 7px; font-size: 12.5px; cursor: pointer; }
 .filtro-botoes button.ativo { background: #E7B84B; color: #2a2210; font-weight: 600; }
 .busca-numero { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.12); color: #f2ede0; border-radius: 8px; padding: 8px 10px; font-size: 13px; width: 190px; }
@@ -134,6 +134,7 @@ button, input, select { font-family: inherit; }
 .cartela-disponivel { cursor: pointer; background: #E9E4D4; transition: transform 0.12s ease, box-shadow 0.12s ease; display: flex; flex-direction: column; width: 100%; }
 .cartela-disponivel:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0,0,0,0.35); }
 .cartela-completa { outline: 3px solid #E7B84B; }
+.cartela-quase { outline: 3px solid #D97706; }
 .cartela-cabecalho { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
 .cartela-numero { font-family: 'Fraunces', serif; font-weight: 700; font-size: 15px; }
 .cartela-dono { font-size: 12.5px; color: #5c5340; max-width: 60%; text-align: right; }
@@ -147,6 +148,7 @@ button, input, select { font-family: inherit; }
 .barra-progresso { flex: 1; height: 6px; border-radius: 4px; background: #e3dac0; overflow: hidden; }
 .barra-preenchida { height: 100%; background: #E7B84B; }
 .selo-bingo { position: absolute; top: -10px; right: 10px; background: #B23A2E; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 12px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+.selo-quase { position: absolute; top: -10px; right: 10px; background: #D97706; color: #fff; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 12px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
 .cta-escolher { margin-top: 10px; text-align: center; background: #2F7A63; color: #f2ede0; padding: 7px; border-radius: 7px; font-size: 12.5px; font-weight: 600; }
 
 /* Modais */
@@ -205,7 +207,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Por Salas Independentes =====================
+// ===================== Painel de Bingo — Com Filtro "Por 1 Pedra" =====================
 const TOTAL_BOLAS = 90;
 const NUMEROS_POR_CARTELA = 15;
 const TOTAL_CARTELAS = 1000;
@@ -298,7 +300,7 @@ const state = {
   erroClaim: "",
   apagarAberto: false,
   confirmacao: null,
-  filtroCartelas: "todas",
+  filtroCartelas: "todas", // 'todas' | 'disponiveis' | 'reservadas' | 'quase'
   buscaCartelas: "",
   visiveisCartelas: PAGINA,
   buscaAdmin: "",
@@ -825,6 +827,8 @@ function htmlCartaoCartela(c, set) {
   }
   const marcados = c.numeros.filter((n) => set.has(n)).length;
   const completa = marcados === c.numeros.length;
+  const quase = marcados === c.numeros.length - 1; // Faltando exatamente 1 pedra
+
   const linhas = [0, 1, 2]
     .map((linha) => `<div class="cartela-linha">${c.numeros
       .slice(linha * 5, linha * 5 + 5)
@@ -835,8 +839,16 @@ function htmlCartaoCartela(c, set) {
       })
       .join("")}</div>`)
     .join("");
+
+  let seloHtml = "";
+  if (completa) {
+    seloHtml = '<div class="selo-bingo">BINGO!</div>';
+  } else if (quase) {
+    seloHtml = '<div class="selo-quase">POR 1 PEDRA!</div>';
+  }
+
   return `
-    <div class="cartela${completa ? " cartela-completa" : ""}">
+    <div class="cartela${completa ? " cartela-completa" : prawie = quase ? " cartela-quase" : ""}">
       <div class="cartela-cabecalho">
         <span class="cartela-numero">Nº ${c.numero}</span>
         <span class="cartela-dono">${escapeHtml(c.dono)}</span>
@@ -846,13 +858,24 @@ function htmlCartaoCartela(c, set) {
         <div class="barra-progresso"><div class="barra-preenchida" style="width:${(marcados / c.numeros.length) * 100}%"></div></div>
         <span>${marcados}/${c.numeros.length}</span>
       </div>
-      ${completa ? '<div class="selo-bingo">BINGO!</div>' : ""}
+      ${seloHtml}
     </div>`;
 }
 
 function cartelasFiltradas() {
+  const set = new Set(state.sorteados);
   return state.cartelas
-    .filter((c) => (state.filtroCartelas === "disponiveis" ? !c.dono : state.filtroCartelas === "reservadas" ? !!c.dono : true))
+    .filter((c) => {
+      if (!c.dono) return state.filtroCartelas === "todas" || state.filtroCartelas === "disponiveis";
+      const marcados = c.numeros.filter((n) => set.has(n)).length;
+      const completa = marcados === c.numeros.length;
+      const quase = marcados === c.numeros.length - 1;
+
+      if (state.filtroCartelas === "disponiveis") return false;
+      if (state.filtroCartelas === "reservadas") return true;
+      if (state.filtroCartelas === "quase") return quase && !completa;
+      return true;
+    })
     .filter((c) => (state.buscaCartelas ? String(c.numero).includes(state.buscaCartelas.trim()) : true));
 }
 
@@ -869,14 +892,18 @@ function htmlResultadoCartelas() {
 }
 
 function htmlTelaCartelas() {
+  const set = new Set(state.sorteados);
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
+  const quaseCount = state.cartelas.filter((c) => c.dono && c.numeros.filter(n => set.has(n)).length === c.numeros.length - 1 && !c.numeros.every(n => set.has(n))).length;
+
   return `
     <div>
       <div class="barra-filtros">
         <div class="filtro-botoes">
           <button class="${state.filtroCartelas === "todas" ? "ativo" : ""}" onclick="setFiltroCartelas('todas')">Todas (${state.cartelas.length})</button>
           <button class="${state.filtroCartelas === "disponiveis" ? "ativo" : ""}" onclick="setFiltroCartelas('disponiveis')">Disponíveis (${disponiveis})</button>
-          <button class="${state.filtroCartelas === "reservadas" ? "ativo" : ""}" onclick="setFiltroCartelas('reservadas')">Escolhidas (${state.cartelas.length - disponiveis})</button>
+          <button class="${state.filtroCartelas === "reservadas" ? "ativo" : ""}" onclick="setFiltroCartelas('reservadas')">Escolhidas</button>
+          <button class="${state.filtroCartelas === "quase" ? "ativo" : ""}" onclick="setFiltroCartelas('quase')">🔥 Por 1 pedra (${quaseCount})</button>
         </div>
         <input class="busca-numero" value="${escapeHtml(state.buscaCartelas)}" oninput="filtrarCartelasBusca(this.value)" placeholder="Buscar nº da cartela" inputmode="numeric" />
       </div>
@@ -885,33 +912,49 @@ function htmlTelaCartelas() {
 }
 
 function adminFiltradas() {
+  const set = new Set(state.sorteados);
   const termo = state.buscaAdmin.trim().toLowerCase();
   return state.cartelas
-    .filter((c) => (termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) || (c.celular || "").includes(termo) : true))
-    .sort((a, b) => a.numero - b.numero);
+    .filter((c) => {
+      const matchTermo = termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) || (c.celular || "").includes(termo) : true;
+      return matchTermo;
+    })
+    .sort((a, b) => {
+      // Prioriza cartelas por 1 pedra no topo da administração para facilitar a visualização do operador
+      const aMarcados = a.numeros.filter(n => set.has(n)).length;
+      const bMarcados = b.numeros.filter(n => set.has(n)).length;
+      const aQuase = (a.dono && aMarcados === a.numeros.length - 1) ? 1 : 0;
+      const bQuase = (b.dono && bMarcados === b.numeros.length - 1) ? 1 : 0;
+      return bQuase - aQuase || a.numero - b.numero;
+    });
 }
 
 function htmlResultadoAdmin() {
+  const set = new Set(state.sorteados);
   const filtradas = adminFiltradas();
   const paraExibir = filtradas.slice(0, state.visiveisAdmin);
   const linhas = paraExibir
-    .map(
-      (c) => `
+    .map((c) => {
+      const marcados = c.numeros.filter(n => set.has(n)).length;
+      const quase = c.dono && marcados === c.numeros.length - 1;
+      const statusBadge = quase ? ' <span style="background:#D97706;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:bold;">🔥 Por 1 pedra</span>' : '';
+      return `
       <tr>
-        <td>${c.numero}</td>
+        <td><strong>${c.numero}</strong>${statusBadge}</td>
         <td><input class="input-edicao" placeholder="— disponível —" value="${escapeHtml(c.dono)}" onblur="salvarDono(${c.numero}, this.value)" /></td>
         <td><input class="input-edicao" placeholder="— sem cel —" value="${escapeHtml(c.celular)}" onblur="salvarCelular(${c.numero}, this.value)" /></td>
-        <td class="td-numeros">${c.numeros.join(", ")}</td>
+        <td class="td-numeros"><strong>${marcados}/15</strong> (${c.numeros.join(", ")})</td>
         <td>${c.dono ? `<button class="btn-remover" onclick="liberarCartela(${c.numero})">Liberar</button>` : ""}</td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join("");
+
   const carregarMais = state.visiveisAdmin < filtradas.length
     ? `<div class="carregar-mais-wrap"><button class="btn-carregar-mais" onclick="carregarMaisAdmin()">Carregar mais (${filtradas.length - state.visiveisAdmin} restantes)</button></div>`
     : "";
   return `
     <table>
-      <thead><tr><th>Nº</th><th>Dono (Nome Completo)</th><th>Celular</th><th>Números</th><th></th></tr></thead>
+      <thead><tr><th>Nº</th><th>Dono (Nome Completo)</th><th>Celular</th><th>Progresso / Números</th><th></th></tr></thead>
       <tbody>${linhas}</tbody>
     </table>
     ${carregarMais}`;
@@ -919,7 +962,9 @@ function htmlResultadoAdmin() {
 
 function htmlTelaAdmin() {
   carregarDadosSala();
+  const set = new Set(state.sorteados);
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
+  const quaseCount = state.cartelas.filter((c) => c.dono && c.numeros.filter(n => set.has(n)).length === c.numeros.length - 1 && !c.numeros.every(n => set.has(n))).length;
   const chamadores = loadJSON(GLOBAL_CALLERS_KEY, []);
   const listaChamadoresHtml = chamadores.map(c => `
     <div class="item-chamador">
@@ -948,7 +993,7 @@ function htmlTelaAdmin() {
 
       <div class="admin-bloco">
         <h2>Baralho da Sala: ${escapeHtml(state.sala)}</h2>
-        <p>${state.cartelas.length} cartelas geradas · ${disponiveis} disponíveis · ${state.cartelas.length - disponiveis} escolhidas.</p>
+        <p>${state.cartelas.length} cartelas geradas · ${disponiveis} disponíveis · ${state.cartelas.length - disponiveis} escolhidas · <strong style="color:#F59E0B;">🔥 ${quaseCount} cartela(s) por 1 pedra</strong></p>
         <button class="btn-perigo" onclick="pedirGerarPool()">Apagar tudo e gerar novo baralho nesta sala</button>
       </div>
 
