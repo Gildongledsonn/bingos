@@ -288,10 +288,21 @@ class BingoApp {
       </main>`;
   }
 
-  htmlTelaChamada() {
+ htmlTelaChamada() {
     const totalBolas = this.modeloSala === "5x5" ? 75 : 90;
+    const totalNecessario = this.modeloSala === "5x5" ? 25 : 15;
     const set = new Set(this.sorteados);
     const ultima = this.sorteados[this.sorteados.length - 1];
+
+    // Cálculos atualizados para o chamador
+    const escolhidas = this.cartelas.filter(c => c.dono).length;
+    const ativas = this.cartelas.filter(c => c.dono && c.celular).length;
+    const armadas = this.cartelas.filter(c => {
+      if (!c.dono) return false;
+      const marcados = c.numeros.filter(n => set.has(n)).length;
+      return marcados === totalNecessario - 1;
+    }).length;
+
     const bolas = Array.from({ length: totalBolas }, (_, i) => i + 1).map(n => {
       const marcada = set.has(n);
       return `<button class="bola${marcada ? " marcada" : ""}"${marcada ? ` style="background:${corDoNumero(n)}"` : ""} onclick="app.marcarBola(${n})">${n}</button>`;
@@ -301,7 +312,15 @@ class BingoApp {
       <div class="tela-chamada">
         <div class="painel-esquerda">
           <div class="bola-atual"><span class="bola-atual-numero">${ultima ?? "—"}</span><span class="bola-atual-label">última</span></div>
-          <div class="resumo"><div><strong>${this.sorteados.length}</strong><span>sorteadas</span></div><div><strong>${totalBolas - this.sorteados.length}</strong><span>restantes</span></div></div>
+          <div class="resumo">
+            <div><strong>${this.sorteados.length}</strong><span>sorteadas</span></div>
+            <div><strong>${totalBolas - this.sorteados.length}</strong><span>restantes</span></div>
+            <div><strong>${escolhidas}</strong><span>escolhidas</span></div>
+          </div>
+          <div class="resumo" style="margin-top: 8px;">
+            <div><strong style="color: #F59E0B;">${armadas}</strong><span>🔥 Armadas (Por 1)</span></div>
+            <div><strong style="color: #3F7A52;">${ativas}</strong><span>📱 Cartelas Ativas</span></div>
+          </div>
         </div>
         <div class="grade-bolas">${bolas}</div>
       </div>`;
