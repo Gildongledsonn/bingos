@@ -1,684 +1,644 @@
-// ===================== Painel de Bingo — lógica standalone =====================
-// Não depende de nenhuma biblioteca externa. Funciona em qualquer host estático.
-// Persistência via localStorage (funciona no navegador/dispositivo em que o app é usado;
-// veja o README.md sobre a limitação de sincronização entre dispositivos diferentes).
-
-const TOTAL_BOLAS = 90;
-const NUMEROS_POR_CARTELA = 15;
-const TOTAL_CARTELAS = 1000;
-const PAGINA = 60;
 const COLUNA_COR = [
   "#8E4A3A", "#B5772F", "#A98A2A", "#5B7A3A", "#2F7A63",
   "#2F6E7A", "#3A5B8E", "#5B4A8E", "#7A3A6E",
 ];
+
 function corDoNumero(n) {
   const idx = Math.min(8, Math.floor((n - 1) / 10));
   return COLUNA_COR[idx];
 }
 
-const K = {
-  cards: "bingo-cartelas",
-  drawn: "bingo-sorteados",
-  winners: "bingo-ganhadores",
-  auth: "bingo-admin-auth",
-};
+class BingoApp {
+  constructor() {
+    this.sala = "geral";
+    this.modeloSala = "5x3";
+    this.papel = null;
+    this.tipoOperador = null;
+    this.usuarioLogado = "";
+    this.aba = "chamada";
+    this.cartelas = [];
+    this.sorteados = [];
+    this.ganhadores = [];
+    this.ganhadoresIds = new Set();
+    this.modalNumero = null;
+    this.nomeClaim = "";
+    this.celularClaim = "";
+    this.erroClaim = "";
+    this.filtroCartelas = "todas";
+    this.visiveisCartelas = 24; // Paginação para o jogador
+    this.buscaAdmin = "";
+    this.visiveisAdmin = 60;
+    this.inputSala = "";
+    this.inputModelo = "5x3";
+    this.erroAuth = "";
+    this.novoChamadorUser = "";
+    this.novoChamadorPass = "";
+    this.erroChamador = "";
+
+    // Campos de Impressão A4
+    this.impressaoCartelaId = 1;
+    this.impPremio1 = "1º Prêmio: R$ 500,00";
+    this.impPremio2 = "2º Prêmio: R$ 1.000,00";
+    this.impPremio3 = "3º Prêmio: R$ 1.500,00";
+    this.impPremio4 = "4º Prêmio: R$ 2.000,00";
+    this.impValorCartela = "R$ 10,00";
+    this.impAtracoes = "Música ao vivo e sorteios extras";
+    this.impEmpresa = "GAF Treinamentos / Natal-RN";
+  }
+
+  async init() {
+    await this.initMasterAdmin();
+    this.carregarDadosSala();
+    this.render();
+  }
+
+  async initMasterAdmin() {
+    let chamadores = loadJSON("bingo-chamadores-autorizados", null);
+    if (!chamadores) {
+      const hash = await hashTexto("159753@bingos");
+      saveJSON("bingo-chamadores-autorizados", [{ usuario: "Gildongledson", hash, master: true }]);
+    }
+  }
+
+  carregarDadosSala() {
+    const s = (this.sala || "geral").toLowerCase().trim();
+    this.modeloSala = loadJSON(`bingo-modelo-${s}`, "5x3");
+    const rawCards = loadJSON(`bingo-cartelas-${s}`, []);
+
+    if (!rawCards || rawCards.length === 0 || rawCards[0].modelo !== this.modeloSala) {
+      this.cartelas = [];
+      for (let i = 1; i <= 1000; i++) {
+        if (this.modeloSala === "5x5") {
+          this.cartelas.push(new Cartela5x5(i));
+        } else {
+          this.cartelas.push(new Cartela5x3(i));
+        }
+      }
+      this.salvarEstadoSala();
+    } else {
+      this.cartelas = rawCards.map(c => {
+        if (this.modeloSala === "5x5" || c.modelo === "5x5") {
+          return new Cartela5x5(c.numero, c.dono, c.celular, c.numeros);
+        }
+        return new Cartela5x3(c.numero, c.dono, c.celular, c.numeros);
+      });
+    }
+    this.sorteados = loadJSON(`bingo-sorteados-${s}`, []);
+    this.ganhadores = loadJSON(`bingo-ganhadores-${s}`, []);
+    this.ganhadoresIds = new Set(this.ganhadores.map(g => g.numero));
+  }
+
+  salvarEstadoSala() {
+    const s = (this.sala || "geral").toLowerCase().trim();
+    saveJSON(`bingo-cartelas-${s}`, this.cartelas);
+    saveJSON(`bingo-sorteados-${s}`, this.sorteados);
+    saveJSON(`bingo-ganhadores-${s}`, this.ganhadores);
+    saveJSON(`bingo-modelo-${s}`, this.modeloSala);
+  }
+
+  entrarNaSala(papel) {
+    const input = document.getElementById("input-nome-sala");
+    const selectModelo = document.getElementById("select-modelo-cartela");
+    this.sala = (input ? input.value : this.inputSala).trim() || "geral";
+    this.modeloSala = selectModelo ? selectModelo.value : this.inputModelo;
+
+    saveJSON(`bingo-modelo-${this.sala.toLowerCase().trim()}`, this.modeloSala);
+    this.carregarDadosSala();
+    this.papel = papel;
+    this.render();
+  }
+
+  voltarEscolhaPapel() {
+    this.papel = null;
+    this.tipoOperador = null;
+    this.usuarioLogado = "";
+    this.render();
+  }
+
+  async fazerLoginOperador() {
+    const usuario = (document.getElementById("auth-usuario")?.value || "").trim();
+    const senha = document.getElementById("auth-senha")?.value || "";
+    const hash = await hashTexto(senha);
+    const chamadores = loadJSON("bingo-chamadores-autorizados", []);
+    const encontrado = chamadores.find(c => c.usuario.toLowerCase() === usuario.toLowerCase() && c.hash === hash);
+
+    if (encontrado) {
+      this.usuarioLogado = encontrado.usuario;
+      this.tipoOperador = encontrado.master ? "master" : "chamador";
+      this.aba = "chamada";
+      this.render();
+    } else {
+      this.erroAuth = "Usuário ou senha incorretos.";
+      this.render();
+    }
+  }
+
+  async adicionarChamador() {
+    const u = (document.getElementById("novo-chamador-user")?.value || "").trim();
+    const s = document.getElementById("novo-chamador-pass")?.value || "";
+    if (!u || !s) {
+      this.erroChamador = "Preencha usuário e senha.";
+      this.render();
+      return;
+    }
+    const hash = await hashTexto(s);
+    let chamadores = loadJSON("bingo-chamadores-autorizados", []);
+    if (chamadores.some(c => c.usuario.toLowerCase() === u.toLowerCase())) {
+      this.erroChamador = "Usuário já existe.";
+      this.render();
+      return;
+    }
+    chamadores.push({ usuario: u, hash, master: false });
+    saveJSON("bingo-chamadores-autorizados", chamadores);
+    this.novoChamadorUser = "";
+    this.novoChamadorPass = "";
+    this.erroChamador = "";
+    this.render();
+  }
+
+  removerChamador(usuario) {
+    if (usuario.toLowerCase() === "gildongledson") return;
+    let chamadores = loadJSON("bingo-chamadores-autorizados", []);
+    chamadores = chamadores.filter(c => c.usuario.toLowerCase() !== usuario.toLowerCase());
+    saveJSON("bingo-chamadores-autorizados", chamadores);
+    this.render();
+  }
+
+  marcarBola(n) {
+    if (this.sorteados.includes(n)) return;
+    this.sorteados.push(n);
+    this.checarGanhadores();
+    this.salvarEstadoSala();
+    this.render();
+  }
+
+  checarGanhadores() {
+    const setSorteados = new Set(this.sorteados);
+    const totalNecessario = this.modeloSala === "5x5" ? 25 : 15;
+    
+    this.cartelas.forEach((c) => {
+      if (!c.dono || this.ganhadoresIds.has(c.numero)) return;
+      if (c.numeros.every((n) => setSorteados.has(n))) {
+        this.ganhadoresIds.add(c.numero);
+        const tel = (c.celular || "").replace(/\D/g, "");
+        this.ganhadores.push({
+          numero: c.numero,
+          dono: c.dono,
+          celularUltimos4: tel.length >= 4 ? tel.slice(-4) : "0000",
+          hora: new Date().toLocaleTimeString("pt-BR")
+        });
+      }
+    });
+  }
+
+  render() {
+    const appEl = document.getElementById("app");
+    if (this.papel === null) appEl.innerHTML = this.htmlEscolhaPapel();
+    else if (this.papel === "jogador") appEl.innerHTML = this.htmlJogador();
+    else if (this.papel === "operador") appEl.innerHTML = this.tipoOperador ? this.htmlOperador() : this.htmlAuth();
+    appEl.innerHTML += this.htmlModais();
+  }
+
+  htmlEscolhaPapel() {
+    return `
+      <div class="tela-escolha-papel">
+        <div class="escolha-cabecalho">
+          <span class="bola-logo bola-logo-grande">B</span>
+          <h1>Painel de Bingo por Salas</h1>
+          <p>Informe a sala e o modelo da cartela</p>
+        </div>
+        <div class="caixa-sala">
+          <label>Nome da Sala
+            <input id="input-nome-sala" value="${escapeHtml(this.inputSala || "sala1")}" oninput="app.inputSala=this.value" />
+          </label>
+          <label>Modelo
+            <select id="select-modelo-cartela" onchange="app.inputModelo=this.value">
+              <option value="5x3" ${this.inputModelo === '5x3' ? 'selected' : ''}>Cartela 5x3 (15 números / 90 bolas)</option>
+              <option value="5x5" ${this.inputModelo === '5x5' ? 'selected' : ''}>Cartela 5x5 (25 números / 75 bolas)</option>
+            </select>
+          </label>
+        </div>
+        <div class="escolha-cartoes">
+          <button class="escolha-cartao" onclick="app.entrarNaSala('jogador')">
+            <span class="escolha-emoji">🎟️</span><span class="escolha-titulo">Sou jogador</span>
+          </button>
+          <button class="escolha-cartao" onclick="app.entrarNaSala('operador')">
+            <span class="escolha-emoji">🎙️</span><span class="escolha-titulo">Sou operador</span>
+          </button>
+        </div>
+      </div>`;
+  }
+
+  htmlAuth() {
+    return `
+      <div class="tela-auth">
+        <div class="form-auth">
+          <h2>Entrar na Sala: ${escapeHtml(this.sala)}</h2>
+          <label>Usuário <input id="auth-usuario" /></label>
+          <label>Senha <input id="auth-senha" type="password" onkeydown="if(event.key==='Enter') app.fazerLoginOperador()" /></label>
+          ${this.erroAuth ? `<p class="erro">${escapeHtml(this.erroAuth)}</p>` : ""}
+          <button class="btn-cadastrar" onclick="app.fazerLoginOperador()">Entrar</button>
+          <button class="link-trocar-papel" onclick="app.voltarEscolhaPapel()">Voltar</button>
+        </div>
+      </div>`;
+  }
+
+  htmlFaixaGanhadores() {
+    if (!this.ganhadores.length) return "";
+    return `<div class="faixa-ganhadores">${this.ganhadores.map(g => `<span class="chip-ganhador">🏆 Nº ${g.numero} — ${escapeHtml(g.dono)} (...${g.celularUltimos4})</span>`).join("")}</div>`;
+  }
+
+  htmlJogador() {
+    const disponiveis = this.cartelas.filter(c => !c.dono).length;
+    const ultima = this.sorteados[this.sorteados.length - 1];
+    return `
+      <div>
+        <header class="topo topo-jogador">
+          <div class="topo-titulo">
+            <span class="bola-logo">B</span>
+            <div><h1>Sala: ${escapeHtml(this.sala)} (${this.modeloSala})</h1><p>Escolha sua cartela</p></div>
+          </div>
+          <div class="status-jogador">
+            <div><strong>${ultima ?? "—"}</strong><span>última</span></div>
+            <div><strong>${this.sorteados.length}</strong><span>sorteadas</span></div>
+            <div><strong>${disponiveis}</strong><span>livres</span></div>
+          </div>
+        </header>
+        ${this.htmlFaixaGanhadores()}
+        <main class="conteudo">${this.htmlTelaCartelas()}</main>
+        <button class="link-trocar-papel" onclick="app.voltarEscolhaPapel()">Trocar de sala</button>
+      </div>`;
+  }
+
+  htmlOperador() {
+    const isMaster = this.tipoOperador === "master";
+    return `
+      <header class="topo">
+        <div class="topo-titulo"><span class="bola-logo">B</span><div><h1>Sala: ${escapeHtml(this.sala)} (${this.modeloSala})</h1></div></div>
+        <nav class="abas">
+          <button class="${this.aba === 'chamada' ? 'ativa' : ''}" onclick="app.aba='chamada'; app.render()">Chamador</button>
+          <button class="${this.aba === 'cartelas' ? 'ativa' : ''}" onclick="app.aba='cartelas'; app.render()">Cartelas</button>
+          ${isMaster ? `<button class="${this.aba === 'admin' ? 'ativa' : ''}" onclick="app.aba='admin'; app.render()">Admin & Impressão</button>` : ""}
+        </nav>
+      </header>
+      <div class="faixa-sessao"><span class="badge-sessao">Logado: <strong>${escapeHtml(this.usuarioLogado)}</strong></span><button class="btn-sair" onclick="app.voltarEscolhaPapel()">Sair</button></div>
+      ${this.htmlFaixaGanhadores()}
+      <main class="conteudo">
+        ${this.aba === 'chamada' ? this.htmlTelaChamada() : this.aba === 'cartelas' ? this.htmlTelaCartelas() : this.htmlTelaAdmin()}
+      </main>`;
+  }
+
+  htmlTelaChamada() {
+    const totalBolas = this.modeloSala === "5x5" ? 75 : 90;
+    const set = new Set(this.sorteados);
+    const ultima = this.sorteados[this.sorteados.length - 1];
+    const bolas = Array.from({ length: totalBolas }, (_, i) => i + 1).map(n => {
+      const marcada = set.has(n);
+      return `<button class="bola${marcada ? " marcada" : ""}"${marcada ? ` style="background:${corDoNumero(n)}"` : ""} onclick="app.marcarBola(${n})">${n}</button>`;
+    }).join("");
+
+    return `
+      <div class="tela-chamada">
+        <div class="painel-esquerda">
+          <div class="bola-atual"><span class="bola-atual-numero">${ultima ?? "—"}</span><span class="bola-atual-label">última</span></div>
+          <div class="resumo"><div><strong>${this.sorteados.length}</strong><span>sorteadas</span></div><div><strong>${totalBolas - this.sorteados.length}</strong><span>restantes</span></div></div>
+        </div>
+        <div class="grade-bolas">${bolas}</div>
+      </div>`;
+  }
+
+  htmlTelaCartelas() {
+    const set = new Set(this.sorteados);
+    const filtradas = this.cartelas.filter(c => {
+      if (this.filtroCartelas === "disponiveis") return !c.dono;
+      if (this.filtroCartelas === "reservadas") return !!c.dono;
+      return true;
+    });
+
+    const paraExibir = filtradas.slice(0, this.visiveisCartelas);
+    const grid = `<div class="grade-cartelas">${paraExibir.map(c => c.renderizarHtml(set)).join("")}</div>`;
+    const carregarMais = this.visiveisCartelas < filtradas.length
+      ? `<div class="carregar-mais-wrap"><button class="btn-cadastrar" onclick="app.visiveisCartelas += 24; app.render()">Carregar mais cartelas (${filtradas.length - this.visiveisCartelas} restantes)</button></div>`
+      : "";
+
+    return `
+      <div>
+        <div class="barra-filtros">
+          <div class="filtro-botoes">
+            <button class="${this.filtroCartelas === 'todas' ? 'ativa' : ''}" onclick="app.filtroCartelas='todas'; app.render()">Todas</button>
+            <button class="${this.filtroCartelas === 'disponiveis' ? 'ativa' : ''}" onclick="app.filtroCartelas='disponiveis'; app.render()">Disponíveis</button>
+            <button class="${this.filtroCartelas === 'reservadas' ? 'ativa' : ''}" onclick="app.filtroCartelas='reservadas'; app.render()">Escolhidas</button>
+          </div>
+        </div>
+        ${grid}
+        ${carregarMais}
+      </div>`;
+  }
+
+ htmlTelaAdmin() {
+    const chamadores = loadJSON("bingo-chamadores-autorizados", []);
+    const listaChamadores = chamadores.map(c => `
+      <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.15); padding:8px 12px; border-radius:8px; margin-bottom:6px;">
+        <span><strong>${escapeHtml(c.usuario)}</strong> ${c.master ? '(Master)' : ''}</span>
+        ${!c.master ? `<button class="btn-remover" onclick="app.removerChamador('${c.usuario}')">Remover</button>` : ''}
+      </div>
+    `).join("");
+
+    return `
+      <div class="tela-admin">
+        <div class="admin-bloco">
+          <h2>Gerenciar Chamadores Autorizados</h2>
+          <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:8px; align-items:end;">
+            <label>Usuário <input id="novo-chamador-user" value="${escapeHtml(this.novoChamadorUser)}" oninput="app.novoChamadorUser=this.value" /></label>
+            <label>Senha <input id="novo-chamador-pass" type="password" value="${escapeHtml(this.novoChamadorPass)}" oninput="app.novoChamadorPass=this.value" /></label>
+            <button class="btn-cadastrar" onclick="app.adicionarChamador()">Adicionar</button>
+          </div>
+          ${this.erroChamador ? `<p class="erro">${escapeHtml(this.erroChamador)}</p>` : ""}
+          <div style="margin-top:10px;">${listaChamadores}</div>
+        </div>
+
+        <div class="admin-bloco">
+          <h2>🖨️ Opção de Impressão A4 (Marca d'Água por Imagem)</h2>
+          <p>Configure os prêmios e arraste/selecione uma imagem do seu computador para o fundo da folha.</p>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+            <label>Nº da Cartela Inicial <input type="number" min="1" max="1000" value="${this.impressaoCartelaId}" oninput="app.impressaoCartelaId=parseInt(this.value)||1" /></label>
+            <label>1º Prêmio <input value="${escapeHtml(this.impPremio1)}" oninput="app.impPremio1=this.value" /></label>
+            <label>2º Prêmio <input value="${escapeHtml(this.impPremio2)}" oninput="app.impPremio2=this.value" /></label>
+            <label>3º Prêmio <input value="${escapeHtml(this.impPremio3)}" oninput="app.impPremio3=this.value" /></label>
+            <label>4º Prêmio <input value="${escapeHtml(this.impPremio4)}" oninput="app.impPremio4=this.value" /></label>
+            <label>Valor da Cartela <input value="${escapeHtml(this.impValorCartela)}" oninput="app.impValorCartela=this.value" /></label>
+            <label>Atrações <input value="${escapeHtml(this.impAtracoes)}" oninput="app.impAtracoes=this.value" /></label>
+            <label>Logomarca / Endereço <input value="${escapeHtml(this.impEmpresa)}" oninput="app.impEmpresa=this.value" /></label>
+            
+            <label style="grid-column: 1 / -1;">
+              Arraste ou escolha a imagem de fundo (Marca d'água):
+              <input type="file" accept="image/*" onchange="app.tratarArquivoImagem(event)" style="padding: 6px; background: rgba(255,255,255,0.08); border: 1px dashed #ccc; cursor: pointer; width: 100%;" />
+            </label>
+            ${this.impFotoUrl ? `<div style="grid-column: 1 / -1; font-size: 12px; color: #E7B84B;">✅ Imagem carregada com sucesso!</div>` : ""}
+          </div>
+          <button class="btn-cadastrar" style="margin-top:10px;" onclick="app.gerarImpressaoA4()">Salvar Cartelas em PDF</button>
+        </div>
+      </div>`;
+  }
+
+tratarArquivoImagem(event) {
+    const arquivo = event.target.files[0];
+    if (!arquivo) return;
+    const leitor = new FileReader();
+    leitor.onload = (e) => {
+      this.impFotoUrl = e.target.result; // Armazena a imagem convertida em Base64
+      this.render();
+    };
+    leitor.readAsDataURL(arquivo);
+  }
+
+gerarImpressaoA4() {
+    const inicio = parseInt(this.impressaoCartelaId) || 1;
+    const quantidadeStr = prompt("Quantas cartelas DIFERENTES deseja gerar em PDF?", "10");
+    if (!quantidadeStr) return;
+    const quantidade = parseInt(quantidadeStr) || 10;
+
+    const setVazio = new Set();
+    let folhasHtml = "";
+    const fotoUrl = this.impFotoUrl ? this.impFotoUrl.trim() : "";
+
+    for (let i = 0; i < quantidade; i++) {
+      const idCartelaAtual = inicio + i;
+      const cartela = this.cartelas.find(c => c.numero === idCartelaAtual) || this.cartelas[0];
+      const gridHtml = cartela.renderizarGrid(setVazio, true);
+      const premios = [this.impPremio1, this.impPremio2, this.impPremio3, this.impPremio4];
+
+      const criarQuadrante = (premioTexto, numPremio) => `
+        <div class="quadrante">
+          <div class="topo-imp">
+            <h3>${escapeHtml(this.impEmpresa)}</h3>
+            <p><strong>Cartela Nº ${cartela.numero}</strong> (${cartela.modelo})</p>
+          </div>
+          <div class="premios-imp">
+            <p>🏆 ${numPremio}º Prêmio: ${escapeHtml(premioTexto.replace(/^[0-9]+º\s*Prêmio:\s*/i, ''))}</p>
+          </div>
+          <div class="conteudo-cartela">${gridHtml}</div>
+          <div class="rodape-imp">
+            <span>Valor: <strong>${escapeHtml(this.impValorCartela)}</strong></span>
+            <span>Atrações: <strong>${escapeHtml(this.impAtracoes)}</strong></span>
+          </div>
+        </div>
+      `;
+
+      const cartela1 = criarQuadrante(premios[0], 1);
+      const cartela2 = criarQuadrante(premios[1], 2);
+      const cartela3 = criarQuadrante(premios[2], 3);
+      const cartela4 = criarQuadrante(premios[3], 4);
+      
+      // Cartela de conferência para o lado esquerdo
+      const cartelaCentro = `
+        <div class="quadrante cartela-centro-estilo" style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%;">
+          <div style="width: 100%;">
+            <div style="text-align: center; font-size: 11px; font-weight: bold; margin-bottom: 8px; font-family: 'Fraunces', serif; color: #2F7A63;">CONFERÊNCIA — Cartela Nº ${cartela.numero}</div>
+            <div class="conteudo-cartela">${gridHtml}</div>
+          </div>
+        </div>
+      `;
+
+      // Bloco da imagem para o lado direito
+      const blocoImagem = fotoUrl 
+        ? `<div class="bloco-imagem-lateral"><img src="${escapeHtml(fotoUrl)}" alt="Imagem Central" /></div>` 
+        : `<div class="bloco-imagem-lateral sem-foto"><span>Sem Imagem Selecionada</span></div>`;
+
+      folhasHtml += `
+        <div class="folha-a4">
+          <div class="pos top-left">${cartela1}</div>
+          <div class="pos top-right">${cartela2}</div>
+          
+          <div class="pos centro-esq">${cartelaCentro}</div>
+          <div class="pos centro-dir">${blocoImagem}</div>
+
+          <div class="pos bottom-left">${cartela3}</div>
+          <div class="pos bottom-right">${cartela4}</div>
+        </div>
+      `;
+    }
+
+    const janelaImp = window.open("", "_blank");
+    janelaImp.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Salvar Cartelas em PDF</title>
+        <style>
+          @page { size: A4 portrait; margin: 0; }
+          body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          
+          .folha-a4 { 
+            position: relative;
+            width: 210mm; 
+            height: 297mm; 
+            margin: 0 auto; 
+            box-sizing: border-box; 
+            padding: 8mm; 
+            page-break-after: always; 
+            background: #fff;
+            overflow: hidden;
+          }
+
+          .pos {
+            position: absolute;
+            box-sizing: border-box;
+            z-index: 2;
+          }
+
+          /* Organização simétrica das 4 cartelas nos cantos e o meio dividido em duas colunas */
+          .top-left { top: 8mm; left: 8mm; width: 92mm; height: 93mm; }
+          .top-right { top: 8mm; right: 8mm; width: 92mm; height: 93mm; }
+          
+          .centro-esq { top: 104mm; left: 8mm; width: 92mm; height: 90mm; }
+          .centro-dir { top: 104mm; right: 8mm; width: 92mm; height: 90mm; display: flex; align-items: center; justify-content: center; }
+
+          .bottom-left { bottom: 8mm; left: 8mm; width: 92mm; height: 93mm; }
+          .bottom-right { bottom: 8mm; right: 8mm; width: 92mm; height: 93mm; }
+
+          .bloco-imagem-lateral {
+            width: 100%;
+            height: 100%;
+            border: 2px dashed #bbb;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+            box-sizing: border-box;
+            overflow: hidden;
+            padding: 4mm;
+          }
+
+          .bloco-imagem-lateral img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Faz a imagem preencher todo o quadrante sem distorcer */
+            border-radius: 4px;
+          }
+
+          .sem-foto span {
+            font-size: 11px;
+            color: #888;
+            font-weight: bold;
+          }
+
+          .quadrante { 
+            border: 1.5px dashed #444; 
+            border-radius: 6px;
+            padding: 5px 8mm; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: space-between; 
+            background: #fff; 
+            box-sizing: border-box; 
+            width: 100%; 
+            height: 100%; 
+          }
+
+          .cartela-centro-estilo {
+            border: 2px solid #2F7A63;
+            background: #fff;
+          }
+          
+          .topo-imp { text-align: center; border-bottom: 1px solid #333; padding-bottom: 1px; margin-bottom: 2px; }
+          .topo-imp h3 { margin: 0; font-size: 11px; font-family: 'Fraunces', serif; }
+          .topo-imp p { margin: 1px 0 0; font-size: 9px; color: #333; }
+          
+          .premios-imp { font-size: 9px; border: 1px solid #ccc; padding: 2px 4px; background: #f4efe2; text-align: center; font-weight: bold; border-radius: 3px; color: #2a2210; }
+          .premios-imp p { margin: 0; }
+          
+          .conteudo-cartela { margin-top: 0.5cm; margin-bottom: 0.5cm; }
+          
+          .cartela-linha { display: flex; gap: 2px; margin-bottom: 2px; }
+          .coluna-letra, .pedra { flex: 1; text-align: center; font-size: 10.5px; padding: 3px 0; border: 1px solid #d8cfb8; font-weight: bold; border-radius: 3px; }
+          .coluna-letra { background: #e9e4d4; font-family: 'Fraunces', serif; color: #5c5340; padding: 2px 0; }
+          .pedra { background: #fffdf8; color: #2a2210; }
+          
+          .rodape-imp { display: flex; justify-content: space-between; font-size: 8.5px; border-top: 1px solid #333; padding-top: 2px; color: #444; }
+
+          @media print { 
+            body { padding: 0; } 
+            .folha-a4 { margin: 0; border: none; page-break-after: always; } 
+          }
+        </style>
+      </head>
+      <body>
+        ${folhasHtml}
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 600);
+          };
+        <\/script>
+      </body>
+      </html>
+    `);
+    janelaImp.document.close();
+  }
+
+  abrirEscolha(numero) {
+    this.modalNumero = numero;
+    this.nomeClaim = "";
+    this.celularClaim = "";
+    this.erroClaim = "";
+    this.render();
+  }
+
+  confirmarEscolha() {
+    const nome = document.getElementById("input-nome-claim")?.value.trim() || "";
+    const celular = document.getElementById("input-celular-claim")?.value.trim() || "";
+    if (!nome || !celular) { this.erroClaim = "Preencha nome e celular."; this.render(); return; }
+
+    const cartela = this.cartelas.find(c => c.numero === this.modalNumero);
+    if (cartela && !cartela.dono) {
+      cartela.dono = nome;
+      cartela.celular = celular;
+      this.checarGanhadores();
+      this.salvarEstadoSala();
+      this.modalNumero = null;
+      this.render();
+    }
+  }
+
+  htmlModais() {
+    if (this.modalNumero === null) return "";
+    const c = this.cartelas.find(x => x.numero === this.modalNumero);
+    return `
+      <div class="modal-fundo" onclick="app.modalNumero=null; app.render()">
+        <div class="modal-caixa" onclick="event.stopPropagation()">
+          <h3>Escolher cartela nº ${c.numero}</h3>
+          <label class="modal-label">Nome Completo <input id="input-nome-claim" /></label>
+          <label class="modal-label">Celular <input id="input-celular-claim" /></label>
+          ${this.erroClaim ? `<p class="erro">${escapeHtml(this.erroClaim)}</p>` : ""}
+          <div class="modal-botoes">
+            <button class="btn-cancelar" onclick="app.modalNumero=null; app.render()">Cancelar</button>
+            <button class="btn-cadastrar" onclick="app.confirmarEscolha()">Confirmar</button>
+          </div>
+        </div>
+      </div>`;
+  }
+}
 
 function loadJSON(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    return fallback;
-  }
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch (e) { return fallback; }
 }
 function saveJSON(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.error("Não foi possível salvar no armazenamento local:", e);
-  }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
 }
-
 function escapeHtml(str) {
   return String(str == null ? "" : str).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
 }
-
 async function hashTexto(txt) {
-  if (window.crypto && window.crypto.subtle) {
-    try {
-      const enc = new TextEncoder().encode(txt);
-      const buf = await window.crypto.subtle.digest("SHA-256", enc);
-      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-    } catch (e) {
-      // segue para o fallback abaixo
-    }
-  }
-  // fallback simples (não criptográfico) para contextos sem HTTPS/SubtleCrypto
   let hash = 0;
   for (let i = 0; i < txt.length; i++) hash = (hash * 31 + txt.charCodeAt(i)) >>> 0;
   return "fallback-" + hash.toString(16);
 }
 
-// ---------- geração das cartelas ----------
-function sortear15(usados) {
-  let numeros, chave;
-  do {
-    const baralho = Array.from({ length: TOTAL_BOLAS }, (_, i) => i + 1);
-    for (let i = baralho.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [baralho[i], baralho[j]] = [baralho[j], baralho[i]];
-    }
-    numeros = baralho.slice(0, NUMEROS_POR_CARTELA).sort((a, b) => a - b);
-    chave = numeros.join(",");
-  } while (usados.has(chave));
-  usados.add(chave);
-  return numeros;
-}
-function gerarPool(qtd = TOTAL_CARTELAS) {
-  const usados = new Set();
-  const lista = [];
-  for (let i = 1; i <= qtd; i++) lista.push({ numero: i, dono: null, numeros: sortear15(usados) });
-  return lista;
-}
-
-// ---------- estado global ----------
-const state = {
-  papel: null,        // null | 'jogador' | 'operador'
-  logado: false,       // sessão do operador (reseta ao recarregar a página)
-  aba: "chamada",
-  cartelas: [],
-  sorteados: [],
-  ganhadores: [],
-  ganhadoresIds: new Set(),
-  modalNumero: null,
-  nomeClaim: "",
-  erroClaim: "",
-  apagarAberto: false,
-  confirmacao: null,   // { mensagem, acao, perigo }
-  filtroCartelas: "todas",
-  buscaCartelas: "",
-  visiveisCartelas: PAGINA,
-  buscaAdmin: "",
-  visiveisAdmin: PAGINA,
-  usuarioAuth: "",
-  erroAuth: "",
-};
-
-function init() {
-  state.cartelas = loadJSON(K.cards, []);
-  if (!state.cartelas || state.cartelas.length === 0) {
-    state.cartelas = gerarPool();
-    saveJSON(K.cards, state.cartelas);
-  }
-  state.sorteados = loadJSON(K.drawn, []);
-  state.ganhadores = loadJSON(K.winners, []);
-  state.ganhadoresIds = new Set(state.ganhadores.map((g) => g.numero));
-  render();
-}
-
-// sincroniza entre abas abertas no MESMO navegador/dispositivo
-window.addEventListener("storage", (e) => {
-  if (![K.cards, K.drawn, K.winners].includes(e.key)) return;
-  state.cartelas = loadJSON(K.cards, state.cartelas);
-  state.sorteados = loadJSON(K.drawn, state.sorteados);
-  state.ganhadores = loadJSON(K.winners, state.ganhadores);
-  state.ganhadoresIds = new Set(state.ganhadores.map((g) => g.numero));
-  render();
-});
-
-function checarGanhadores() {
-  const setSorteados = new Set(state.sorteados);
-  const novos = [];
-  state.cartelas.forEach((c) => {
-    if (!c.dono || state.ganhadoresIds.has(c.numero)) return;
-    if (c.numeros.every((n) => setSorteados.has(n))) {
-      state.ganhadoresIds.add(c.numero);
-      novos.push({ numero: c.numero, dono: c.dono, hora: new Date().toLocaleTimeString("pt-BR") });
-    }
-  });
-  if (novos.length) {
-    state.ganhadores = [...state.ganhadores, ...novos];
-    saveJSON(K.winners, state.ganhadores);
-  }
-}
-
-// ===================== ações =====================
-
-function escolherPapel(papel) {
-  state.papel = papel;
-  state.erroAuth = "";
-  render();
-}
-function voltarEscolhaPapel() {
-  state.papel = null;
-  render();
-}
-
-async function criarLogin() {
-  const usuario = (document.getElementById("auth-usuario").value || "").trim();
-  const senha = document.getElementById("auth-senha").value || "";
-  const confirmar = document.getElementById("auth-confirmar").value || "";
-  if (!usuario || !senha) { state.erroAuth = "Preencha usuário e senha."; state.usuarioAuth = usuario; render(); return; }
-  if (senha.length < 4) { state.erroAuth = "Use uma senha com pelo menos 4 caracteres."; state.usuarioAuth = usuario; render(); return; }
-  if (senha !== confirmar) { state.erroAuth = "As senhas não coincidem."; state.usuarioAuth = usuario; render(); return; }
-  const hash = await hashTexto(senha);
-  saveJSON(K.auth, { usuario, hash });
-  state.logado = true;
-  state.erroAuth = "";
-  render();
-}
-
-async function fazerLogin() {
-  const usuario = (document.getElementById("auth-usuario").value || "").trim();
-  const senha = document.getElementById("auth-senha").value || "";
-  const auth = loadJSON(K.auth, null);
-  if (!auth) { state.erroAuth = "Nenhum login cadastrado ainda."; render(); return; }
-  const hash = await hashTexto(senha);
-  if (usuario.toLowerCase() === String(auth.usuario).toLowerCase() && hash === auth.hash) {
-    state.logado = true;
-    state.erroAuth = "";
-    render();
-  } else {
-    state.usuarioAuth = usuario;
-    state.erroAuth = "Usuário ou senha incorretos.";
-    render();
-  }
-}
-
-function sairOperador() {
-  state.logado = false;
-  state.papel = null;
-  render();
-}
-
-function marcarBola(n) {
-  if (state.sorteados.includes(n)) return;
-  state.sorteados = [...state.sorteados, n];
-  saveJSON(K.drawn, state.sorteados);
-  checarGanhadores();
-  render();
-}
-
-function abrirApagar() { state.apagarAberto = true; render(); }
-function fecharApagar() { state.apagarAberto = false; render(); }
-
-function removerNumero(n) {
-  state.sorteados = state.sorteados.filter((x) => x !== n);
-  saveJSON(K.drawn, state.sorteados);
-  const setSorteados = new Set(state.sorteados);
-  const porNumero = {};
-  state.cartelas.forEach((c) => (porNumero[c.numero] = c));
-  const validos = state.ganhadores.filter((g) => {
-    const c = porNumero[g.numero];
-    return !c || c.numeros.every((num) => setSorteados.has(num));
-  });
-  if (validos.length !== state.ganhadores.length) {
-    state.ganhadores = validos;
-    state.ganhadoresIds = new Set(validos.map((g) => g.numero));
-    saveJSON(K.winners, validos);
-  }
-  render();
-}
-
-function pedirReiniciar() {
-  state.confirmacao = {
-    mensagem: "Reiniciar a partida? As bolas sorteadas e os ganhadores serão apagados. As cartelas e quem escolheu cada uma permanecem.",
-    acao: "reiniciar",
-    perigo: false,
-  };
-  render();
-}
-function pedirGerarPool() {
-  state.confirmacao = {
-    mensagem: `Isso apaga TODAS as ${TOTAL_CARTELAS} cartelas, quem escolheu cada uma, as bolas sorteadas e os ganhadores, gerando um novo baralho do zero. Deseja continuar?`,
-    acao: "gerarPool",
-    perigo: true,
-  };
-  render();
-}
-function cancelarConfirmacao() { state.confirmacao = null; render(); }
-function confirmarAcaoPendente() {
-  if (!state.confirmacao) return;
-  if (state.confirmacao.acao === "reiniciar") {
-    state.sorteados = [];
-    state.ganhadores = [];
-    state.ganhadoresIds = new Set();
-    saveJSON(K.drawn, []);
-    saveJSON(K.winners, []);
-  } else if (state.confirmacao.acao === "gerarPool") {
-    state.cartelas = gerarPool();
-    state.sorteados = [];
-    state.ganhadores = [];
-    state.ganhadoresIds = new Set();
-    saveJSON(K.cards, state.cartelas);
-    saveJSON(K.drawn, []);
-    saveJSON(K.winners, []);
-  }
-  state.confirmacao = null;
-  render();
-}
-
-function abrirEscolha(numero) {
-  state.modalNumero = numero;
-  state.nomeClaim = "";
-  state.erroClaim = "";
-  render();
-}
-function fecharEscolha() { state.modalNumero = null; render(); }
-
-function confirmarEscolha() {
-  const input = document.getElementById("input-nome-claim");
-  const nome = input ? input.value.trim() : "";
-  state.nomeClaim = nome;
-  if (!nome) { state.erroClaim = "Informe o nome de quem está escolhendo a cartela."; render(); return; }
-  const atuais = loadJSON(K.cards, state.cartelas);
-  const idx = atuais.findIndex((c) => c.numero === state.modalNumero);
-  if (idx < 0) { state.erroClaim = "Essa cartela não existe mais."; render(); return; }
-  if (atuais[idx].dono) {
-    state.cartelas = atuais;
-    state.erroClaim = `Essa cartela já foi escolhida por ${atuais[idx].dono}. Escolha outra, por favor.`;
-    render();
-    return;
-  }
-  atuais[idx] = { ...atuais[idx], dono: nome };
-  state.cartelas = atuais;
-  saveJSON(K.cards, atuais);
-  checarGanhadores();
-  state.modalNumero = null;
-  render();
-}
-
-function setFiltroCartelas(f) { state.filtroCartelas = f; state.visiveisCartelas = PAGINA; render(); }
-function filtrarCartelasBusca(valor) {
-  state.buscaCartelas = valor.replace(/[^0-9]/g, "");
-  state.visiveisCartelas = PAGINA;
-  const el = document.getElementById("resultado-cartelas");
-  if (el) el.innerHTML = htmlResultadoCartelas();
-}
-function carregarMaisCartelas() {
-  state.visiveisCartelas += PAGINA;
-  const el = document.getElementById("resultado-cartelas");
-  if (el) el.innerHTML = htmlResultadoCartelas();
-}
-
-function liberarCartela(numero) {
-  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: null } : c));
-  saveJSON(K.cards, state.cartelas);
-  state.ganhadoresIds.delete(numero);
-  render();
-}
-function salvarDono(numero, novoNome) {
-  const nome = (novoNome || "").trim();
-  const atual = state.cartelas.find((c) => c.numero === numero);
-  if (atual && (atual.dono || "") === nome) return; // nada mudou
-  state.cartelas = state.cartelas.map((c) => (c.numero === numero ? { ...c, dono: nome || null } : c));
-  saveJSON(K.cards, state.cartelas);
-  checarGanhadores();
-  render();
-}
-function buscarAdmin(valor) {
-  state.buscaAdmin = valor;
-  state.visiveisAdmin = PAGINA;
-  const el = document.getElementById("resultado-admin");
-  if (el) el.innerHTML = htmlResultadoAdmin();
-}
-function carregarMaisAdmin() {
-  state.visiveisAdmin += PAGINA;
-  const el = document.getElementById("resultado-admin");
-  if (el) el.innerHTML = htmlResultadoAdmin();
-}
-function setAba(aba) { state.aba = aba; render(); }
-
-// ===================== renderização =====================
-
-function render() {
-  const app = document.getElementById("app");
-  if (state.papel === null) {
-    app.innerHTML = htmlEscolhaPapel();
-  } else if (state.papel === "jogador") {
-    app.innerHTML = htmlJogador();
-  } else if (state.papel === "operador") {
-    app.innerHTML = state.logado ? htmlOperador() : htmlAuth();
-  }
-  app.innerHTML += htmlModais();
-}
-
-function htmlEscolhaPapel() {
-  return `
-    <div class="tela-escolha-papel">
-      <div class="escolha-cabecalho">
-        <span class="bola-logo bola-logo-grande">B</span>
-        <h1>Painel de Bingo</h1>
-        <p>Como você vai usar o app agora?</p>
-      </div>
-      <div class="escolha-cartoes">
-        <button class="escolha-cartao" onclick="escolherPapel('jogador')">
-          <span class="escolha-emoji">🎟️</span>
-          <span class="escolha-titulo">Sou jogador</span>
-          <span class="escolha-descricao">Escolher minha cartela e acompanhar a partida</span>
-        </button>
-        <button class="escolha-cartao" onclick="escolherPapel('operador')">
-          <span class="escolha-emoji">🎙️</span>
-          <span class="escolha-titulo">Sou o operador</span>
-          <span class="escolha-descricao">Chamar os números e administrar as cartelas</span>
-        </button>
-      </div>
-    </div>`;
-}
-
-function htmlAuth() {
-  const existeLogin = !!loadJSON(K.auth, null);
-  const usuarioValor = escapeHtml(state.usuarioAuth);
-  if (!existeLogin) {
-    return `
-      <div class="tela-auth">
-        <div class="form-auth">
-          <h2>Criar login do operador</h2>
-          <p class="subtitulo">Esse será o único login para acessar o chamador e a administração deste bingo. Guarde-o com cuidado — ele fica salvo apenas neste navegador.</p>
-          <label>Usuário
-            <input id="auth-usuario" value="${usuarioValor}" placeholder="Ex.: operador" />
-          </label>
-          <label>Senha
-            <input id="auth-senha" type="password" placeholder="Mínimo 4 caracteres" />
-          </label>
-          <label>Confirmar senha
-            <input id="auth-confirmar" type="password" placeholder="Repita a senha" onkeydown="if(event.key==='Enter') criarLogin()" />
-          </label>
-          ${state.erroAuth ? `<p class="erro">${escapeHtml(state.erroAuth)}</p>` : ""}
-          <button class="btn-cadastrar" onclick="criarLogin()">Criar login e entrar</button>
-          <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Voltar</button>
-        </div>
-      </div>`;
-  }
-  return `
-    <div class="tela-auth">
-      <div class="form-auth">
-        <h2>Entrar como operador</h2>
-        <p class="subtitulo">Informe o usuário e a senha cadastrados neste dispositivo.</p>
-        <label>Usuário
-          <input id="auth-usuario" value="${usuarioValor}" placeholder="Usuário" />
-        </label>
-        <label>Senha
-          <input id="auth-senha" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter') fazerLogin()" />
-        </label>
-        ${state.erroAuth ? `<p class="erro">${escapeHtml(state.erroAuth)}</p>` : ""}
-        <button class="btn-cadastrar" onclick="fazerLogin()">Entrar</button>
-        <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Voltar</button>
-      </div>
-    </div>`;
-}
-
-function htmlFaixaGanhadores() {
-  if (!state.ganhadores.length) return "";
-  return `<div class="faixa-ganhadores">${state.ganhadores.map((g) => `<span class="chip-ganhador">🏆 Cartela nº ${g.numero} — ${escapeHtml(g.dono)}</span>`).join("")}</div>`;
-}
-
-function htmlJogador() {
-  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  const ultimaBola = state.sorteados[state.sorteados.length - 1];
-  return `
-    <div>
-      <header class="topo topo-jogador">
-        <div class="topo-titulo">
-          <span class="bola-logo">B</span>
-          <div>
-            <h1>Escolha sua cartela</h1>
-            <p>Toque em uma cartela disponível para reservar a sua</p>
-          </div>
-        </div>
-        <div class="status-jogador">
-          <div><strong>${ultimaBola ?? "—"}</strong><span>última bola</span></div>
-          <div><strong>${state.sorteados.length}</strong><span>sorteadas</span></div>
-          <div><strong>${disponiveis}</strong><span>disponíveis</span></div>
-        </div>
-      </header>
-      ${htmlFaixaGanhadores()}
-      <main class="conteudo">${htmlTelaCartelas()}</main>
-      <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Sou o operador</button>
-    </div>`;
-}
-
-function htmlOperador() {
-  const auth = loadJSON(K.auth, null);
-  return `
-    <header class="topo">
-      <div class="topo-titulo">
-        <span class="bola-logo">B</span>
-        <div>
-          <h1>Painel de Bingo</h1>
-          <p>90 números · ${TOTAL_CARTELAS} cartelas · chamada ao vivo</p>
-        </div>
-      </div>
-      <nav class="abas">
-        <button class="${state.aba === "chamada" ? "ativa" : ""}" onclick="setAba('chamada')">Chamador</button>
-        <button class="${state.aba === "cartelas" ? "ativa" : ""}" onclick="setAba('cartelas')">Cartelas</button>
-        <button class="${state.aba === "admin" ? "ativa" : ""}" onclick="setAba('admin')">Administração</button>
-      </nav>
-    </header>
-    <div class="faixa-sessao">
-      <span class="badge-sessao">Sessão: <strong>${escapeHtml(auth ? auth.usuario : "")}</strong></span>
-      <button class="btn-sair" onclick="sairOperador()">Sair</button>
-    </div>
-    ${htmlFaixaGanhadores()}
-    <main class="conteudo">
-      ${state.aba === "chamada" ? htmlTelaChamada() : ""}
-      ${state.aba === "cartelas" ? htmlTelaCartelas() : ""}
-      ${state.aba === "admin" ? htmlTelaAdmin() : ""}
-    </main>
-    <button class="link-trocar-papel" onclick="voltarEscolhaPapel()">Trocar de painel</button>`;
-}
-
-function htmlTelaChamada() {
-  const set = new Set(state.sorteados);
-  const ultimaBola = state.sorteados[state.sorteados.length - 1];
-  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  const bolas = Array.from({ length: TOTAL_BOLAS }, (_, i) => i + 1)
-    .map((n) => {
-      const marcada = set.has(n);
-      const estilo = marcada ? ` style="background:${corDoNumero(n)};border-color:${corDoNumero(n)}"` : "";
-      return `<button class="bola${marcada ? " marcada" : ""}"${estilo} onclick="marcarBola(${n})">${n}</button>`;
-    })
-    .join("");
-  return `
-    <div class="tela-chamada">
-      <div class="painel-esquerda">
-        <div class="bola-atual" style="border-color:${ultimaBola ? corDoNumero(ultimaBola) : "#3a3530"}">
-          <span class="bola-atual-numero">${ultimaBola ?? "—"}</span>
-          <span class="bola-atual-label">última bola</span>
-        </div>
-        <div class="resumo">
-          <div><strong>${state.sorteados.length}</strong><span>sorteadas</span></div>
-          <div><strong>${TOTAL_BOLAS - state.sorteados.length}</strong><span>restantes</span></div>
-          <div><strong>${state.cartelas.length - disponiveis}</strong><span>escolhidas</span></div>
-        </div>
-        <p class="instrucao">Toque no número anunciado no globo para marcá-lo. Uma vez marcado, ele não pode ser desfeito por aqui — use o botão abaixo se marcar errado.</p>
-        <button class="btn-apagar-numero" onclick="abrirApagar()">Apagar número</button>
-        <button class="btn-reiniciar" onclick="pedirReiniciar()">Reiniciar partida</button>
-      </div>
-      <div class="grade-bolas">${bolas}</div>
-    </div>`;
-}
-
-function htmlCartaoCartela(c, set) {
-  if (!c.dono) {
-    const linhas = [0, 1, 2]
-      .map((linha) => `<div class="cartela-linha">${c.numeros.slice(linha * 5, linha * 5 + 5).map((n) => `<span class="pedra pedra-livre">${n}</span>`).join("")}</div>`)
-      .join("");
-    return `
-      <button class="cartela cartela-disponivel" onclick="abrirEscolha(${c.numero})">
-        <div class="cartela-cabecalho">
-          <span class="cartela-numero">Nº ${c.numero}</span>
-          <span class="tag-disponivel">Disponível</span>
-        </div>
-        <div class="cartela-linhas">${linhas}</div>
-        <span class="cta-escolher">Escolher esta cartela</span>
-      </button>`;
-  }
-  const marcados = c.numeros.filter((n) => set.has(n)).length;
-  const completa = marcados === c.numeros.length;
-  const linhas = [0, 1, 2]
-    .map((linha) => `<div class="cartela-linha">${c.numeros
-      .slice(linha * 5, linha * 5 + 5)
-      .map((n) => {
-        const marcada = set.has(n);
-        const estilo = marcada ? ` style="background:${corDoNumero(n)};border-color:${corDoNumero(n)}"` : "";
-        return `<span class="pedra${marcada ? " pedra-marcada" : ""}"${estilo}>${n}</span>`;
-      })
-      .join("")}</div>`)
-    .join("");
-  return `
-    <div class="cartela${completa ? " cartela-completa" : ""}">
-      <div class="cartela-cabecalho">
-        <span class="cartela-numero">Nº ${c.numero}</span>
-        <span class="cartela-dono">${escapeHtml(c.dono)}</span>
-      </div>
-      <div class="cartela-linhas">${linhas}</div>
-      <div class="cartela-rodape">
-        <div class="barra-progresso"><div class="barra-preenchida" style="width:${(marcados / c.numeros.length) * 100}%"></div></div>
-        <span>${marcados}/${c.numeros.length}</span>
-      </div>
-      ${completa ? '<div class="selo-bingo">BINGO!</div>' : ""}
-    </div>`;
-}
-
-function cartelasFiltradas() {
-  return state.cartelas
-    .filter((c) => (state.filtroCartelas === "disponiveis" ? !c.dono : state.filtroCartelas === "reservadas" ? !!c.dono : true))
-    .filter((c) => (state.buscaCartelas ? String(c.numero).includes(state.buscaCartelas.trim()) : true));
-}
-
-function htmlResultadoCartelas() {
-  const set = new Set(state.sorteados);
-  const filtradas = cartelasFiltradas();
-  if (!filtradas.length) return `<div class="vazio">Nenhuma cartela encontrada.</div>`;
-  const paraExibir = filtradas.slice(0, state.visiveisCartelas);
-  const grid = `<div class="grade-cartelas">${paraExibir.map((c) => htmlCartaoCartela(c, set)).join("")}</div>`;
-  const carregarMais = state.visiveisCartelas < filtradas.length
-    ? `<div class="carregar-mais-wrap"><button class="btn-carregar-mais" onclick="carregarMaisCartelas()">Carregar mais (${filtradas.length - state.visiveisCartelas} restantes)</button></div>`
-    : "";
-  return grid + carregarMais;
-}
-
-function htmlTelaCartelas() {
-  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  return `
-    <div>
-      <div class="barra-filtros">
-        <div class="filtro-botoes">
-          <button class="${state.filtroCartelas === "todas" ? "ativo" : ""}" onclick="setFiltroCartelas('todas')">Todas (${state.cartelas.length})</button>
-          <button class="${state.filtroCartelas === "disponiveis" ? "ativo" : ""}" onclick="setFiltroCartelas('disponiveis')">Disponíveis (${disponiveis})</button>
-          <button class="${state.filtroCartelas === "reservadas" ? "ativo" : ""}" onclick="setFiltroCartelas('reservadas')">Escolhidas (${state.cartelas.length - disponiveis})</button>
-        </div>
-        <input class="busca-numero" value="${escapeHtml(state.buscaCartelas)}" oninput="filtrarCartelasBusca(this.value)" placeholder="Buscar nº da cartela" inputmode="numeric" />
-      </div>
-      <div id="resultado-cartelas">${htmlResultadoCartelas()}</div>
-    </div>`;
-}
-
-function adminFiltradas() {
-  const termo = state.buscaAdmin.trim().toLowerCase();
-  return state.cartelas
-    .filter((c) => (termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) : true))
-    .sort((a, b) => a.numero - b.numero);
-}
-
-function htmlResultadoAdmin() {
-  const filtradas = adminFiltradas();
-  const paraExibir = filtradas.slice(0, state.visiveisAdmin);
-  const linhas = paraExibir
-    .map(
-      (c) => `
-      <tr>
-        <td>${c.numero}</td>
-        <td><input class="input-edicao" placeholder="— disponível —" value="${escapeHtml(c.dono)}" onblur="salvarDono(${c.numero}, this.value)" /></td>
-        <td class="td-numeros">${c.numeros.join(", ")}</td>
-        <td>${c.dono ? `<button class="btn-remover" onclick="liberarCartela(${c.numero})">Liberar</button>` : ""}</td>
-      </tr>`
-    )
-    .join("");
-  const carregarMais = state.visiveisAdmin < filtradas.length
-    ? `<div class="carregar-mais-wrap"><button class="btn-carregar-mais" onclick="carregarMaisAdmin()">Carregar mais (${filtradas.length - state.visiveisAdmin} restantes)</button></div>`
-    : "";
-  return `
-    <table>
-      <thead><tr><th>Nº</th><th>Dono</th><th>Números</th><th></th></tr></thead>
-      <tbody>${linhas}</tbody>
-    </table>
-    ${carregarMais}`;
-}
-
-function htmlTelaAdmin() {
-  const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  return `
-    <div class="tela-admin">
-      <div class="admin-resumo">
-        <h2>Baralho de cartelas</h2>
-        <p>${state.cartelas.length} cartelas geradas · ${disponiveis} disponíveis · ${state.cartelas.length - disponiveis} escolhidas.</p>
-        <button class="btn-perigo" onclick="pedirGerarPool()">Apagar tudo e gerar novo baralho de ${TOTAL_CARTELAS}</button>
-      </div>
-      <input class="busca-numero busca-admin" value="${escapeHtml(state.buscaAdmin)}" oninput="buscarAdmin(this.value)" placeholder="Buscar por número ou nome" />
-      <div class="lista-cartelas" id="resultado-admin">${htmlResultadoAdmin()}</div>
-    </div>`;
-}
-
-function htmlModais() {
-  let html = "";
-
-  if (state.modalNumero !== null) {
-    const c = state.cartelas.find((x) => x.numero === state.modalNumero);
-    if (c) {
-      html += `
-        <div class="modal-fundo" onclick="fecharEscolha()">
-          <div class="modal-caixa" onclick="event.stopPropagation()">
-            <h3>Escolher cartela nº ${c.numero}</h3>
-            <div class="modal-numeros">${c.numeros.map((n) => `<span class="modal-pedra" style="border-color:${corDoNumero(n)}">${n}</span>`).join("")}</div>
-            <label class="modal-label">Nome de quem está adquirindo
-              <input id="input-nome-claim" value="${escapeHtml(state.nomeClaim)}" placeholder="Seu nome" onkeydown="if(event.key==='Enter') confirmarEscolha()" />
-            </label>
-            ${state.erroClaim ? `<p class="erro">${escapeHtml(state.erroClaim)}</p>` : ""}
-            <div class="modal-botoes">
-              <button class="btn-cancelar" onclick="fecharEscolha()">Cancelar</button>
-              <button class="btn-cadastrar" onclick="confirmarEscolha()">Confirmar escolha</button>
-            </div>
-          </div>
-        </div>`;
-    }
-  }
-
-  if (state.apagarAberto) {
-    const numeros = [...state.sorteados].sort((a, b) => a - b);
-    html += `
-      <div class="modal-fundo" onclick="fecharApagar()">
-        <div class="modal-caixa" onclick="event.stopPropagation()">
-          <h3>Apagar número</h3>
-          <p class="modal-mensagem">Toque no número que foi marcado por engano para desfazer a marcação.</p>
-          ${numeros.length === 0
-            ? `<p class="modal-mensagem">Nenhuma bola marcada ainda.</p>`
-            : `<div class="modal-numeros">${numeros.map((n) => `<button class="modal-pedra modal-pedra-clicavel" style="border-color:${corDoNumero(n)};background:${corDoNumero(n)}" onclick="removerNumero(${n})">${n} ✕</button>`).join("")}</div>`}
-          <div class="modal-botoes">
-            <button class="btn-cadastrar" onclick="fecharApagar()">Concluído</button>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  if (state.confirmacao) {
-    html += `
-      <div class="modal-fundo" onclick="cancelarConfirmacao()">
-        <div class="modal-caixa" onclick="event.stopPropagation()">
-          <h3>${state.confirmacao.perigo ? "Atenção" : "Confirmar"}</h3>
-          <p class="modal-mensagem">${escapeHtml(state.confirmacao.mensagem)}</p>
-          <div class="modal-botoes">
-            <button class="btn-cancelar" onclick="cancelarConfirmacao()">Cancelar</button>
-            <button class="${state.confirmacao.perigo ? "btn-perigo btn-perigo-cheio" : "btn-cadastrar"}" onclick="confirmarAcaoPendente()">${state.confirmacao.perigo ? "Sim, apagar tudo" : "Confirmar"}</button>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  return html;
-}
-
-document.addEventListener("DOMContentLoaded", init);
+const app = new BingoApp();
+document.addEventListener("DOMContentLoaded", () => app.init());
