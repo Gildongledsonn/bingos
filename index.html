@@ -47,7 +47,7 @@ button, input, select { font-family: inherit; }
 
 .caixa-sala {
   background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 20px;
-  width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 10px; text-align: left;
+  width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; text-align: left;
 }
 .caixa-sala label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #cfe0d3; }
 
@@ -207,9 +207,7 @@ input:focus, select:focus { outline: 2px solid #E7B84B; }
 <div id="app"></div>
 
 <script>
-// ===================== Painel de Bingo — Com Filtro "Por 1 Pedra" =====================
-const TOTAL_BOLAS = 90;
-const NUMEROS_POR_CARTELA = 15;
+// ===================== Painel de Bingo — Com Escolha de Modelo 5x3 ou 5x5 =====================
 const TOTAL_CARTELAS = 1000;
 const PAGINA = 60;
 const COLUNA_COR = [
@@ -263,29 +261,40 @@ async function hashTexto(txt) {
   return "fallback-" + hash.toString(16);
 }
 
-function sortear15(usados) {
+function sortearNumeros(totalBolas, qtdPorCartela, usados) {
   let numeros, chave;
   do {
-    const baralho = Array.from({ length: TOTAL_BOLAS }, (_, i) => i + 1);
+    const baralho = Array.from({ length: totalBolas }, (_, i) => i + 1);
     for (let i = baralho.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [baralho[i], baralho[j]] = [baralho[j], baralho[i]];
     }
-    numeros = baralho.slice(0, NUMEROS_POR_CARTELA).sort((a, b) => a - b);
+    numeros = baralho.slice(0, qtdPorCartela).sort((a, b) => a - b);
     chave = numeros.join(",");
   } while (usados.has(chave));
   usados.add(chave);
   return numeros;
 }
-function gerarPool(qtd = TOTAL_CARTELAS) {
+
+function gerarPool(modelo, qtd = TOTAL_CARTELAS) {
+  const totalBolas = modelo === "5x5" ? 75 : 90;
+  const qtdPorCartela = modelo === "5x5" ? 24 : 15; // 5x5 tem 24 números + 1 espaço livre no centro
   const usados = new Set();
   const lista = [];
-  for (let i = 1; i <= qtd; i++) lista.push({ numero: i, dono: null, celular: null, numeros: sortear15(usados) });
+  for (let i = 1; i <= qtd; i++) {
+    lista.push({
+      numero: i,
+      dono: null,
+      celular: null,
+      numeros: sortearNumeros(totalBolas, qtdPorCartela, usados)
+    });
+  }
   return lista;
 }
 
 const state = {
   sala: "geral",
+  modeloSala: "5x3",     // '5x3' (90 bolas) ou '5x5' (75 bolas)
   papel: null,
   tipoOperador: null,
   usuarioLogado: "",
@@ -300,7 +309,7 @@ const state = {
   erroClaim: "",
   apagarAberto: false,
   confirmacao: null,
-  filtroCartelas: "todas", // 'todas' | 'disponiveis' | 'reservadas' | 'quase'
+  filtroCartelas: "todas",
   buscaCartelas: "",
   visiveisCartelas: PAGINA,
   buscaAdmin: "",
@@ -311,6 +320,7 @@ const state = {
   novoChamadorPass: "",
   erroChamador: "",
   inputSala: "",
+  inputModelo: "5x3",
   erroSala: "",
 };
 
@@ -346,10 +356,13 @@ function carregarDadosSala() {
   const kCards = getKey("cartelas", state.sala);
   const kDrawn = getKey("sorteados", state.sala);
   const kWinners = getKey("ganhadores", state.sala);
+  const kModelo = getKey("modelo", state.sala);
 
+  state.modeloSala = loadJSON(kModelo, "5x3");
   state.cartelas = loadJSON(kCards, []);
+
   if (!state.cartelas || state.cartelas.length === 0) {
-    state.cartelas = gerarPool();
+    state.cartelas = gerarPool(state.modeloSala);
     saveJSON(kCards, state.cartelas);
   } else {
     state.cartelas = state.cartelas.map(c => ({ ...c, celular: c.celular || null }));
@@ -367,7 +380,9 @@ window.addEventListener("storage", (e) => {
 
 function checarGanhadores() {
   const setSorteados = new Set(state.sorteados);
+  const totalNecessario = state.modeloSala === "5x5" ? 24 : 15;
   const novos = [];
+
   state.cartelas.forEach((c) => {
     if (!c.dono || state.ganhadoresIds.has(c.numero)) return;
     if (c.numeros.every((n) => setSorteados.has(n))) {
@@ -390,14 +405,20 @@ function checarGanhadores() {
 
 function entrarNaSala(papel) {
   const input = document.getElementById("input-nome-sala");
+  const selectModelo = document.getElementById("select-modelo-cartela");
   const nomeSala = (input ? input.value : state.inputSala).trim();
+  const modelo = selectModelo ? selectModelo.value : state.inputModelo;
+
   if (!nomeSala) {
     state.erroSala = "Digite o nome da sala ou do chamador.";
     render();
     return;
   }
   state.sala = nomeSala;
+  state.modeloSala = modelo;
   state.erroSala = "";
+
+  saveJSON(getKey("modelo", state.sala), state.modeloSala);
   carregarDadosSala();
   escolherPapel(papel);
 }
@@ -542,7 +563,7 @@ function confirmarAcaoPendente() {
     saveJSON(kDrawn, []);
     saveJSON(kWinners, []);
   } else if (state.confirmacao.acao === "gerarPool") {
-    state.cartelas = gerarPool();
+    state.cartelas = gerarPool(state.modeloSala);
     state.sorteados = [];
     state.ganhadores = [];
     state.ganhadoresIds = new Set();
@@ -672,13 +693,21 @@ function htmlEscolhaPapel() {
       <div class="escolha-cabecalho">
         <span class="bola-logo bola-logo-grande">B</span>
         <h1>Painel de Bingo por Salas</h1>
-        <p>Informe a sala ou o nome do chamador para acessar a instância correta</p>
+        <p>Informe o nome da sala e o modelo da cartela</p>
       </div>
 
       <div class="caixa-sala">
         <label>Nome da Sala / Chamador
           <input id="input-nome-sala" value="${salaValor}" placeholder="Ex.: sala-do-gil, joao" oninput="state.inputSala=this.value" />
         </label>
+
+        <label>Modelo da Cartela & Globo
+          <select id="select-modelo-cartela" onchange="state.inputModelo=this.value">
+            <option value="5x3" ${state.inputModelo === '5x3' ? 'selected' : ''}>Cartela 5x3 (90 bolas no globo)</option>
+            <option value="5x5" ${state.inputModelo === '5x5' ? 'selected' : ''}>Cartela 5x5 (75 bolas no globo)</option>
+          </select>
+        </label>
+
         ${state.erroSala ? `<p class="erro">${escapeHtml(state.erroSala)}</p>` : ""}
       </div>
 
@@ -732,7 +761,7 @@ function htmlJogador() {
         <div class="topo-titulo">
           <span class="bola-logo">B</span>
           <div>
-            <h1>Sala: ${escapeHtml(state.sala)}</h1>
+            <h1>Sala: ${escapeHtml(state.sala)} (${state.modeloSala === '5x5' ? '5x5 - 75 Bolas' : '5x3 - 90 Bolas'})</h1>
             <p>Toque em uma cartela disponível para registrar seu nome e celular</p>
           </div>
         </div>
@@ -756,7 +785,7 @@ function htmlOperador() {
       <div class="topo-titulo">
         <span class="bola-logo">B</span>
         <div>
-          <h1>Painel da Sala: ${escapeHtml(state.sala)}</h1>
+          <h1>Painel da Sala: ${escapeHtml(state.sala)} (${state.modeloSala === '5x5' ? '5x5 - 75 Bolas' : '5x3 - 90 Bolas'})</h1>
           <p>${isMaster ? "Administrador Master" : "Chamador Autorizado"}</p>
         </div>
       </div>
@@ -780,16 +809,19 @@ function htmlOperador() {
 }
 
 function htmlTelaChamada() {
+  const totalBolas = state.modeloSala === "5x5" ? 75 : 90;
   const set = new Set(state.sorteados);
   const ultimaBola = state.sorteados[state.sorteados.length - 1];
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  const bolas = Array.from({ length: TOTAL_BOLAS }, (_, i) => i + 1)
+  
+  const bolas = Array.from({ length: totalBolas }, (_, i) => i + 1)
     .map((n) => {
       const marcada = set.has(n);
       const estilo = marcada ? ` style="background:${corDoNumero(n)};border-color:${corDoNumero(n)}"` : "";
       return `<button class="bola${marcada ? " marcada" : ""}"${estilo} onclick="marcarBola(${n})">${n}</button>`;
     })
     .join("");
+
   return `
     <div class="tela-chamada">
       <div class="painel-esquerda">
@@ -799,10 +831,10 @@ function htmlTelaChamada() {
         </div>
         <div class="resumo">
           <div><strong>${state.sorteados.length}</strong><span>sorteadas</span></div>
-          <div><strong>${TOTAL_BOLAS - state.sorteados.length}</strong><span>restantes</span></div>
+          <div><strong>${totalBolas - state.sorteados.length}</strong><span>restantes</span></div>
           <div><strong>${state.cartelas.length - disponiveis}</strong><span>escolhidas</span></div>
         </div>
-        <p class="instrucao">Toque no número anunciado no globo para marcá-lo nesta sala.</p>
+        <p class="instrucao">Globo configurado para <strong>${totalBolas} bolas</strong> (${state.modeloSala}). Toque para marcar.</p>
         <button class="btn-apagar-numero" onclick="abrirApagar()">Apagar número</button>
         <button class="btn-reiniciar" onclick="pedirReiniciar()">Reiniciar partida</button>
       </div>
@@ -811,34 +843,58 @@ function htmlTelaChamada() {
 }
 
 function htmlCartaoCartela(c, set) {
+  const totalNecessario = state.modeloSala === "5x5" ? 24 : 15;
+  const colunasGrid = state.modeloSala === "5x5" ? 5 : 5;
+  const linhasQtd = state.modeloSala === "5x5" ? 5 : 3;
+
   if (!c.dono) {
-    const linhas = [0, 1, 2]
-      .map((linha) => `<div class="cartela-linha">${c.numeros.slice(linha * 5, linha * 5 + 5).map((n) => `<span class="pedra pedra-livre">${n}</span>`).join("")}</div>`)
-      .join("");
+    let linhasHtml = "";
+    for (let l = 0; l < linhasQtd; l++) {
+      let linhaItens = "";
+      for (let col = 0; col < colunasGrid; col++) {
+        const idx = l * colunasGrid + col;
+        if (state.modeloSala === "5x5" && l === 2 && col === 2) {
+          linhaItens += `<span class="pedra pedra-livre" style="background:#E7B84B;color:#2a2210;font-size:10px;">LIVRE</span>`;
+        } else {
+          const val = c.numeros[idx >= (state.modeloSala === "5x5" && idx >= 12 ? idx - 1 : idx) ? (state.modeloSala === "5x5" && idx > 12 ? idx - 1 : idx) : idx];
+          linhaItens += `<span class="pedra pedra-livre">${val ?? ""}</span>`;
+        }
+      }
+      linhasHtml += `<div class="cartela-linha">${linhaItens}</div>`;
+    }
+
     return `
       <button class="cartela cartela-disponivel" onclick="abrirEscolha(${c.numero})">
         <div class="cartela-cabecalho">
-          <span class="cartela-numero">Nº ${c.numero}</span>
+          <span class="cartela-numero">Nº ${c.numero} (${state.modeloSala})</span>
           <span class="tag-disponivel">Disponível</span>
         </div>
-        <div class="cartela-linhas">${linhas}</div>
+        <div class="cartela-linhas">${linhasHtml}</div>
         <span class="cta-escolher">Escolher esta cartela</span>
       </button>`;
   }
-  const marcados = c.numeros.filter((n) => set.has(n)).length;
-  const completa = marcados === c.numeros.length;
-  const quase = marcados === c.numeros.length - 1; // Faltando exatamente 1 pedra
 
-  const linhas = [0, 1, 2]
-    .map((linha) => `<div class="cartela-linha">${c.numeros
-      .slice(linha * 5, linha * 5 + 5)
-      .map((n) => {
+  // Conta os marcados (no 5x5 o centro é livre por padrão, logo conta como marcado)
+  const marcados = c.numeros.filter((n) => set.has(n)).length + (state.modeloSala === "5x5" ? 1 : 0);
+  const completa = marcados >= totalNecessario;
+  const quase = marcados === totalNecessario - 1;
+
+  let linhasHtml = "";
+  let numIdx = 0;
+  for (let l = 0; l < linhasQtd; l++) {
+    let linhaItens = "";
+    for (let col = 0; col < colunasGrid; col++) {
+      if (state.modeloSala === "5x5" && l === 2 && col === 2) {
+        linhaItens += `<span class="pedra" style="background:#E7B84B;color:#2a2210;font-size:10px;">LIVRE</span>`;
+      } else {
+        const n = c.numeros[numIdx++];
         const marcada = set.has(n);
         const estilo = marcada ? ` style="background:${corDoNumero(n)};border-color:${corDoNumero(n)}"` : "";
-        return `<span class="pedra${marcada ? " pedra-marcada" : ""}"${estilo}>${n}</span>`;
-      })
-      .join("")}</div>`)
-    .join("");
+        linhaItens += `<span class="pedra${marcada ? " pedra-marcada" : ""}"${estilo}>${n}</span>`;
+      }
+    }
+    linhasHtml += `<div class="cartela-linha">${linhaItens}</div>`;
+  }
 
   let seloHtml = "";
   if (completa) {
@@ -848,15 +904,15 @@ function htmlCartaoCartela(c, set) {
   }
 
   return `
-    <div class="cartela${completa ? " cartela-completa" : prawie = quase ? " cartela-quase" : ""}">
+    <div class="cartela${completa ? " cartela-completa" : quase ? " cartela-quase" : ""}">
       <div class="cartela-cabecalho">
         <span class="cartela-numero">Nº ${c.numero}</span>
         <span class="cartela-dono">${escapeHtml(c.dono)}</span>
       </div>
-      <div class="cartela-linhas">${linhas}</div>
+      <div class="cartela-linhas">${linhasHtml}</div>
       <div class="cartela-rodape">
-        <div class="barra-progresso"><div class="barra-preenchida" style="width:${(marcados / c.numeros.length) * 100}%"></div></div>
-        <span>${marcados}/${c.numeros.length}</span>
+        <div class="barra-progresso"><div class="barra-preenchida" style="width:${(marcados / totalNecessario) * 100}%"></div></div>
+        <span>${marcados}/${totalNecessario}</span>
       </div>
       ${seloHtml}
     </div>`;
@@ -864,12 +920,14 @@ function htmlCartaoCartela(c, set) {
 
 function cartelasFiltradas() {
   const set = new Set(state.sorteados);
+  const totalNecessario = state.modeloSala === "5x5" ? 24 : 15;
+
   return state.cartelas
     .filter((c) => {
       if (!c.dono) return state.filtroCartelas === "todas" || state.filtroCartelas === "disponiveis";
-      const marcados = c.numeros.filter((n) => set.has(n)).length;
-      const completa = marcados === c.numeros.length;
-      const quase = marcados === c.numeros.length - 1;
+      const marcados = c.numeros.filter((n) => set.has(n)).length + (state.modeloSala === "5x5" ? 1 : 0);
+      const completa = marcados >= totalNecessario;
+      const quase = marcados === totalNecessario - 1;
 
       if (state.filtroCartelas === "disponiveis") return false;
       if (state.filtroCartelas === "reservadas") return true;
@@ -893,8 +951,13 @@ function htmlResultadoCartelas() {
 
 function htmlTelaCartelas() {
   const set = new Set(state.sorteados);
+  const totalNecessario = state.modeloSala === "5x5" ? 24 : 15;
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  const quaseCount = state.cartelas.filter((c) => c.dono && c.numeros.filter(n => set.has(n)).length === c.numeros.length - 1 && !c.numeros.every(n => set.has(n))).length;
+  const quaseCount = state.cartelas.filter((c) => {
+    if (!c.dono) return false;
+    const m = c.numeros.filter(n => set.has(n)).length + (state.modeloSala === "5x5" ? 1 : 0);
+    return m === totalNecessario - 1 && m < totalNecessario;
+  }).length;
 
   return `
     <div>
@@ -913,37 +976,37 @@ function htmlTelaCartelas() {
 
 function adminFiltradas() {
   const set = new Set(state.sorteados);
+  const totalNecessario = state.modeloSala === "5x5" ? 24 : 15;
   const termo = state.buscaAdmin.trim().toLowerCase();
+
   return state.cartelas
-    .filter((c) => {
-      const matchTermo = termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) || (c.celular || "").includes(termo) : true;
-      return matchTermo;
-    })
+    .filter((c) => (termo ? String(c.numero).includes(termo) || (c.dono || "").toLowerCase().includes(termo) || (c.celular || "").includes(termo) : true))
     .sort((a, b) => {
-      // Prioriza cartelas por 1 pedra no topo da administração para facilitar a visualização do operador
-      const aMarcados = a.numeros.filter(n => set.has(n)).length;
-      const bMarcados = b.numeros.filter(n => set.has(n)).length;
-      const aQuase = (a.dono && aMarcados === a.numeros.length - 1) ? 1 : 0;
-      const bQuase = (b.dono && bMarcados === b.numeros.length - 1) ? 1 : 0;
-      return bQuase - aQuase || a.numero - b.numero;
+      const aM = a.numeros.filter(n => set.has(n)).length + (state.modeloSala === "5x5" ? 1 : 0);
+      const bM = b.numeros.filter(n => set.has(n)).length + (state.modeloSala === "5x5" ? 1 : 0);
+      const aQ = (a.dono && aM === totalNecessario - 1) ? 1 : 0;
+      const bQ = (b.dono && bM === totalNecessario - 1) ? 1 : 0;
+      return bQ - aQ || a.numero - b.numero;
     });
 }
 
 function htmlResultadoAdmin() {
   const set = new Set(state.sorteados);
+  const totalNecessario = state.modeloSala === "5x5" ? 24 : 15;
   const filtradas = adminFiltradas();
   const paraExibir = filtradas.slice(0, state.visiveisAdmin);
+  
   const linhas = paraExibir
     .map((c) => {
-      const marcados = c.numeros.filter(n => set.has(n)).length;
-      const quase = c.dono && marcados === c.numeros.length - 1;
+      const marcados = c.numeros.filter(n => set.has(n)).length + (state.modeloSala === "5x5" ? 1 : 0);
+      const quase = c.dono && marcados === totalNecessario - 1;
       const statusBadge = quase ? ' <span style="background:#D97706;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:bold;">🔥 Por 1 pedra</span>' : '';
       return `
       <tr>
         <td><strong>${c.numero}</strong>${statusBadge}</td>
         <td><input class="input-edicao" placeholder="— disponível —" value="${escapeHtml(c.dono)}" onblur="salvarDono(${c.numero}, this.value)" /></td>
         <td><input class="input-edicao" placeholder="— sem cel —" value="${escapeHtml(c.celular)}" onblur="salvarCelular(${c.numero}, this.value)" /></td>
-        <td class="td-numeros"><strong>${marcados}/15</strong> (${c.numeros.join(", ")})</td>
+        <td class="td-numeros"><strong>${marcados}/${totalNecessario}</strong> (${c.numeros.join(", ")})</td>
         <td>${c.dono ? `<button class="btn-remover" onclick="liberarCartela(${c.numero})">Liberar</button>` : ""}</td>
       </tr>`;
     })
@@ -963,8 +1026,14 @@ function htmlResultadoAdmin() {
 function htmlTelaAdmin() {
   carregarDadosSala();
   const set = new Set(state.sorteados);
+  const totalNecessario = state.modeloSala === "5x5" ? 24 : 15;
   const disponiveis = state.cartelas.filter((c) => !c.dono).length;
-  const quaseCount = state.cartelas.filter((c) => c.dono && c.numeros.filter(n => set.has(n)).length === c.numeros.length - 1 && !c.numeros.every(n => set.has(n))).length;
+  const quaseCount = state.cartelas.filter((c) => {
+    if (!c.dono) return false;
+    const m = c.numeros.filter(n => set.has(n)).length + (state.modeloSala === "5x5" ? 1 : 0);
+    return m === totalNecessario - 1 && m < totalNecessario;
+  }).length;
+
   const chamadores = loadJSON(GLOBAL_CALLERS_KEY, []);
   const listaChamadoresHtml = chamadores.map(c => `
     <div class="item-chamador">
@@ -992,7 +1061,7 @@ function htmlTelaAdmin() {
       </div>
 
       <div class="admin-bloco">
-        <h2>Baralho da Sala: ${escapeHtml(state.sala)}</h2>
+        <h2>Baralho da Sala: ${escapeHtml(state.sala)} (${state.modeloSala === '5x5' ? 'Cartela 5x5 - 75 Bolas' : 'Cartela 5x3 - 90 Bolas'})</h2>
         <p>${state.cartelas.length} cartelas geradas · ${disponiveis} disponíveis · ${state.cartelas.length - disponiveis} escolhidas · <strong style="color:#F59E0B;">🔥 ${quaseCount} cartela(s) por 1 pedra</strong></p>
         <button class="btn-perigo" onclick="pedirGerarPool()">Apagar tudo e gerar novo baralho nesta sala</button>
       </div>
@@ -1011,11 +1080,29 @@ function htmlModais() {
   if (state.modalNumero !== null) {
     const c = state.cartelas.find((x) => x.numero === state.modalNumero);
     if (c) {
+      let modalLinhasHtml = "";
+      const colunasGrid = 5;
+      const linhasQtd = state.modeloSala === "5x5" ? 5 : 3;
+      let numIdx = 0;
+
+      for (let l = 0; l < linhasQtd; l++) {
+        let linhaItens = "";
+        for (let col = 0; col < colunasGrid; col++) {
+          if (state.modeloSala === "5x5" && l === 2 && col === 2) {
+            linhaItens += `<span class="modal-pedra" style="background:#E7B84B;color:#2a2210;font-size:9px;">LIVRE</span>`;
+          } else {
+            const val = c.numeros[numIdx++];
+            linhaItens += `<span class="modal-pedra" style="border-color:${corDoNumero(val)}">${val}</span>`;
+          }
+        }
+        modalLinhasHtml += `<div style="display:flex;gap:4px;justify-content:center;margin-bottom:4px;">${linhaItens}</div>`;
+      }
+
       html += `
         <div class="modal-fundo" onclick="fecharEscolha()">
           <div class="modal-caixa" onclick="event.stopPropagation()">
-            <h3>Escolher cartela nº ${c.numero}</h3>
-            <div class="modal-numeros">${c.numeros.map((n) => `<span class="modal-pedra" style="border-color:${corDoNumero(n)}">${n}</span>`).join("")}</div>
+            <h3>Escolher cartela nº ${c.numero} (${state.modeloSala})</h3>
+            <div style="margin-bottom: 12px;">${modalLinhasHtml}</div>
             
             <label class="modal-label">Nome completo
               <input id="input-nome-claim" value="${escapeHtml(state.nomeClaim)}" placeholder="Digite seu nome completo" />
